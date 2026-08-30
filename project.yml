@@ -1,0 +1,30 @@
+name: SelectBar
+options:
+  bundleIdPrefix: local
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+targets:
+  SelectBar:
+    type: application
+    platform: macOS
+    # Только Sources: в Tools лежит отдельная программа рисования иконки,
+    # у неё свой main.swift, и в одной цели они бы столкнулись.
+    sources:
+      - path: Sources
+      - path: AppIcon.icns
+        buildPhase: resources
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: local.selectbar
+        PRODUCT_NAME: SelectBar
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        # Приложение читает выделение через Accessibility — с песочницей это
+        # несовместимо, поэтому она выключена намеренно.
+        ENABLE_APP_SANDBOX: NO
