@@ -69,6 +69,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggle.target = self
         menu.addItem(toggle)
 
+        let fans = NSMenuItem(title: "Spin up fans (\(Fans.seconds)s)",
+                              action: #selector(spinFans), keyEquivalent: "")
+        fans.target = self
+        fans.isEnabled = Fans.available
+        menu.addItem(fans)
+
         let blink = NSMenuItem(title: "Blink keyboard",
                                action: #selector(blinkLights), keyEquivalent: "")
         blink.target = self
@@ -101,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         enabled.toggle()
         if !enabled { popup.hide() }
         rebuildMenu()
+    }
+
+    @objc private func spinFans() {
+        Fans.spinUp()
     }
 
     @objc private func blinkLights() {

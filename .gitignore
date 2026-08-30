@@ -1,0 +1,14 @@
+# Собранное приложение — пересобирается из исходников
+SelectBar.app/
+
+# Проект Xcode генерируется из project.yml командой xcodegen generate
+SelectBar.xcodeproj/
+
+# Иконка собирается из AppIcon.iconset скриптом сборки
+AppIcon.icns
+
+# Скомпилированный рисовальщик иконки
+Tools/makeicon
+
+.DS_Store
+DerivedData/
