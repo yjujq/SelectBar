@@ -29,6 +29,7 @@ final class NotificationWatcher {
 
     func start() {
         stop()
+        reapStrays()
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
@@ -61,6 +62,25 @@ final class NotificationWatcher {
         } catch {
             Log.write("не удалось запустить чтение журнала: \(error)")
         }
+    }
+
+    /// Убрать осиротевшие процессы чтения журнала.
+    ///
+    /// При обычном выходе дочерний процесс завершает `stop()`, вызываемый из
+    /// applicationWillTerminate. Но при аварийном завершении или снятии
+    /// сигналом обработчик выхода не отрабатывает, и процесс остаётся жить,
+    /// перейдя к launchd. Сироты незаметны и бесполезны, а копятся с каждым
+    /// таким разом — поэтому подчищаем их при запуске.
+    private func reapStrays() {
+        let pkill = Process()
+        pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        // Строка совпадения включает предикат целиком: под неё не подпадёт
+        // ничей посторонний `log stream`.
+        pkill.arguments = ["-f", "log stream --style compact --predicate process == \"usernoted\""]
+        pkill.standardOutput = FileHandle.nullDevice
+        pkill.standardError = FileHandle.nullDevice
+        try? pkill.run()
+        pkill.waitUntilExit()
     }
 
     func stop() {
