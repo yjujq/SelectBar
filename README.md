@@ -106,8 +106,7 @@ Todoist, Bear и Obsidian через их схемы адресов. После�
 ## Подсветка клавиатуры
 
 Клавиатура мигает на **входящие уведомления** — от почты, мессенджеров, чего
-угодно. Есть и необязательное мигание **по пробелу**, выключенное по умолчанию;
-оно требует отдельного права «Мониторинг ввода».
+угодно. Мигнуть вручную можно пунктом «Blink keyboard» в меню значка.
 
 ## Настройки без окна
 
@@ -115,7 +114,6 @@ Todoist, Bear и Obsidian через их схемы адресов. После�
 
 ```bash
 defaults write local.selectbar blinkOnNotification -bool false   # мигание на уведомления
-defaults write local.selectbar blinkOnSpace -bool true           # мигание по пробелу
 defaults write local.selectbar offerPaste -bool false            # кнопка вставки
 defaults write local.selectbar showNowPlaying -bool false        # бегущая строка
 defaults write local.selectbar debugLog -bool true               # подробный журнал
@@ -199,8 +197,6 @@ defaults write local.selectbar debugLog -bool true               # подроб�
 
 **Универсальный доступ** обязателен — без него не читается выделение.
 Приложение ждёт его в фоне и начинает работать, как только доступ выдан.
-
-**Мониторинг ввода** нужен только для необязательного мигания по пробелу.
 
 **Управление приложениями** система спросит сама при первом использовании
 действий «Notes» и «Reminder» — они работают через `osascript`.

@@ -14,7 +14,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let marquee = Marquee()
     private let store = ActionStore.shared
     private var mouseMonitor: Any?
-    private var keyMonitor: Any?
     private let notifications = NotificationWatcher()
     private var pendingWork: DispatchWorkItem?
 
@@ -219,17 +218,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Пробел как спусковой крючок. Монитор только наблюдает и событие
-        // не съедает, поэтому пробел печатается как обычно.
-        if store.blinkOnSpace { InputMonitoring.request() }
-        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { event in
-            let code = event.keyCode
-            MainActor.assumeIsolated { [weak self] in
-                guard let self, self.store.blinkOnSpace, code == 49 else { return }
-                Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
-            }
-        }
-
         notifications.onBanner = { [weak self] in
             guard let self, self.store.blinkOnNotification else { return }
             Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
@@ -239,10 +227,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func stopWatching() {
         notifications.stop()
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
             mouseMonitor = nil

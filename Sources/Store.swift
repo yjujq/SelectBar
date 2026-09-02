@@ -100,7 +100,6 @@ final class ActionStore: ObservableObject {
     @Published var blinkOnNotification = true { didSet { defaults.set(blinkOnNotification, forKey: "blinkOnNotification") } }
 
     /// Мигать подсветкой на каждое нажатие пробела.
-    @Published var blinkOnSpace = false { didSet { defaults.set(blinkOnSpace, forKey: "blinkOnSpace") } }
 
     /// Показывать ли бегущей строкой то, что играет.
     @Published var showNowPlaying = true { didSet { defaults.set(showNowPlaying, forKey: "showNowPlaying") } }
@@ -131,7 +130,6 @@ final class ActionStore: ObservableObject {
     private init() {
         offerPaste = defaults.object(forKey: "offerPaste") as? Bool ?? true
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
-        blinkOnSpace = defaults.object(forKey: "blinkOnSpace") as? Bool ?? false
         blinkOnNotification = defaults.object(forKey: "blinkOnNotification") as? Bool ?? true
         showNowPlaying = defaults.object(forKey: "showNowPlaying") as? Bool ?? true
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
