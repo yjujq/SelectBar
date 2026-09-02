@@ -233,7 +233,7 @@ final class ActionStore: ObservableObject {
 
         // --- Словари ---
         // dict:// открывает системный Словарь без всяких посредников.
-        .init(title: "Dictionary", symbol: "character.book.closed.fill",
+        .init(title: "Apple Dictionary", symbol: "character.book.closed.fill",
               kind: .openURL("dict://{text}"), context: .plainText, enabled: false),
         .init(title: "Thesaurus", symbol: "text.book.closed",
               kind: .openURL("https://www.thesaurus.com/browse/{text}"), context: .plainText, enabled: false),
