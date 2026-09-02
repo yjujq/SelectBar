@@ -1,4 +1,5 @@
 import AppKit
+import ObjectiveC.runtime
 
 /// Панель, которая никогда не забирает фокус.
 ///
@@ -7,6 +8,17 @@ import AppKit
 final class NonActivatingPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+/// Подложка панели, которая сама заявляет курсор-стрелку.
+///
+/// Без этого над панелью остаётся курсор от окна снизу — обычно курсив
+/// текстового поля, из которого шло выделение. Он сбивает с толку: по виду
+/// указатель стоит над текстом, хотя на деле над кнопкой.
+private final class ArrowCursorView: NSView {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .arrow)
+    }
 }
 
 @MainActor
@@ -27,7 +39,7 @@ final class PopupController {
         let content = buildBar(actions: actions)
         let size = content.fittingSize
 
-        let origin = position(rect: rect, size: size, fallback: fallbackPoint)
+        let origin = position(size: size, cursor: fallbackPoint)
         let panel = NonActivatingPanel(
             contentRect: NSRect(origin: origin, size: size),
             styleMask: [.nonactivatingPanel, .borderless],
@@ -35,11 +47,18 @@ final class PopupController {
             defer: false
         )
         panel.isFloatingPanel = true
-        panel.level = .popUpMenu
+        // Уровень 3: выше обычных окон приложений (0), но ниже Dock (20),
+        // строки меню (24), Пункта управления (25) и контекстных меню (~101).
+        // На popUpMenu панель перекрывала всё это, включая подсказки.
+        panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // Тень нужна только сплошной заливке. У стекла она своя, и вторая
+        // ложится поверх двойным контуром; у размытия тень окна обводит
+        // капсулу заметным кантом — сама подложка ничего не рисует,
+        // во всём её дереве слоёв borderWidth = 0.
+        panel.hasShadow = ActionStore.shared.barStyle == .solid
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.appearance = appearance(for: ActionStore.shared.barAppearance)
         panel.contentView = content
@@ -69,23 +88,170 @@ final class PopupController {
         let store = ActionStore.shared
         let scale = store.barScale
 
+        if #available(macOS 26.0, *),
+           store.barStyle == .glass || store.barStyle == .glassClear {
+            return buildGlassBar(actions: actions, store: store, scale: scale)
+        }
+
+        // Кнопки вплотную друг к другу и во всю высоту капсулы: между ними
+        // не остаётся мёртвых полос, промахнуться мимо значка нельзя.
+        // Размер капсулы прежний — прибавка к кнопке взята из отступов.
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 1
-        stack.edgeInsets = NSEdgeInsets(top: 4 * scale, left: 6 * scale,
-                                        bottom: 4 * scale, right: 6 * scale)
+        stack.spacing = 0
+        stack.edgeInsets = NSEdgeInsets(top: 0, left: 2.5 * scale,
+                                        bottom: 0, right: 2.5 * scale)
         for action in actions {
-            stack.addArrangedSubview(makeButton(for: action))
+            stack.addArrangedSubview(makeButton(for: action,
+                                                width: 31 * scale, height: 30 * scale))
         }
 
         let size = stack.fittingSize
-        let radius: CGFloat = 11 * scale
+        // Половина высоты даёт капсулу: края скруглены полностью, полукругом.
+        // Считаем от фактического размера, чтобы форма сохранялась при любом
+        // масштабе панели.
+        let radius: CGFloat = size.height / 2
 
         let container = makeBackground(store: store, size: size, radius: radius, stack: stack)
         // Тему ставим на саму подложку, а не только на окно: иначе цвета иконок
         // берутся из системной темы и на своей заливке читаются неверно.
         container.appearance = appearance(for: store.barAppearance)
         return container
+    }
+
+    /// Стеклянная панель по приёмам Apple: несколько капсул в общем контейнере.
+    ///
+    /// Ключевое здесь — NSGlassEffectContainerView. Он не просто держит капсулы
+    /// рядом: близко стоящие стеклянные формы он сращивает в одну текучую, а на
+    /// расстоянии разводит. Именно так собраны панели инструментов в системных
+    /// приложениях. Складывать стекло на стекло вручную нельзя — слои начинают
+    /// преломлять друг друга, и вид разваливается.
+    ///
+    /// Кнопки намеренно лежат НЕ внутри стекла, а отдельным слоем поверх него.
+    /// Внутри стекла нажатия до них не доходили. В отрыве от экрана разметка
+    /// проверку проходит, значит перехватывает живой стеклянный слой, а его
+    /// поведение нам неподвластно. Поэтому стекло оставлено чистой подложкой:
+    /// нажатия идут по обычным представлениям и от него не зависят.
+    @available(macOS 26.0, *)
+    private func buildGlassBar(actions: [Action], store: ActionStore, scale: CGFloat) -> NSView {
+        // Действия разложены по смысловым группам с сохранением порядка:
+        // встроенные, ссылки, команды оболочки. Каждая группа — своя капсула.
+        var order: [Int] = []
+        var groups: [Int: [Action]] = [:]
+        for action in actions {
+            if groups[action.group] == nil { order.append(action.group) }
+            groups[action.group, default: []].append(action)
+        }
+
+        // Поля Apple для панели значков: по бокам заметно больше, чем сверху.
+        let insets = NSEdgeInsets(top: 0, left: 2.5 * scale,
+                                  bottom: 0, right: 2.5 * scale)
+        let gap: CGFloat = 8 * scale
+
+        // Ряд кнопок — он же задаёт размеры, по которым строится стекло.
+        let buttons = NSStackView()
+        buttons.orientation = .horizontal
+        buttons.spacing = gap
+        var groupSizes: [NSSize] = []
+        for key in order {
+            let inner = NSStackView()
+            inner.orientation = .horizontal
+            inner.spacing = 0
+            inner.edgeInsets = insets
+            for action in groups[key] ?? [] {
+                inner.addArrangedSubview(makeButton(for: action,
+                                                    width: 33 * scale, height: 32 * scale))
+            }
+            let groupSize = inner.fittingSize
+            groupSizes.append(groupSize)
+
+            // Почти прозрачная заливка по форме капсулы. Окно панели прозрачное,
+            // и macOS пропускает нажатие в окно снизу там, где пиксель в буфере
+            // окна пуст. Стекло рисуется отдельным слоем композитора и в буфер
+            // ничего не пишет, поэтому без этой заливки непрозрачны только сами
+            // штрихи значков: попал в штрих — сработало, попал в просвет — ушло
+            // в текст под панелью. Отсюда и курсив вместо стрелки, и то, что
+            // нажатие срабатывало через раз.
+            //
+            // Размытию это не нужно: NSVisualEffectView заливает площадь сам,
+            // потому в Blur ничего подобного и не наблюдалось.
+            inner.wantsLayer = true
+            inner.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
+            inner.layer?.cornerRadius = groupSize.height / 2
+
+            buttons.addArrangedSubview(inner)
+        }
+        let size = buttons.fittingSize
+
+        // Стеклянная подложка тех же размеров, но пустая внутри.
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.spacing = gap
+        for groupSize in groupSizes {
+            let capsule = NSGlassEffectView()
+            // .clear только поверх снимков и видео, для всего прочего .regular —
+            // иначе значки теряют опору и перестают читаться на пёстром фоне.
+            capsule.style = store.barStyle == .glassClear ? .clear : .regular
+            capsule.tintColor = store.tintColor
+            capsule.cornerRadius = groupSize.height / 2
+
+            // Стекло само подстраивает тему под то, что под ним: на светлом фоне
+            // светлеет, на тёмном темнеет. Нам нужна тема из настроек, а не из
+            // обоев, поэтому подстройку выключаем.
+            //
+            // Свойство внутреннее: 0 — automatic, 1 — off, 2 — on (по умолчанию).
+            // Значения выяснены перебором; 3 роняет AppKit, поэтому только 1.
+            // Наличие проверяем: если в новой системе свойства не станет,
+            // setValue бросил бы исключение Objective-C, которое Swift не ловит,
+            // и панель падала бы при каждом показе. Так она просто останется
+            // с подстройкой — хуже вид, но не работоспособность.
+            if class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
+                capsule.setValue(1, forKey: "_adaptiveAppearance")
+            }
+            capsule.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                capsule.widthAnchor.constraint(equalToConstant: groupSize.width),
+                capsule.heightAnchor.constraint(equalToConstant: groupSize.height),
+            ])
+            row.addArrangedSubview(capsule)
+        }
+
+        let container = NSGlassEffectContainerView()
+        // Расстояние сращивания: капсулы ближе этого сливаются в одну форму.
+        container.spacing = 10 * scale
+        row.translatesAutoresizingMaskIntoConstraints = true
+        row.frame = NSRect(origin: .zero, size: size)
+        container.contentView = row
+        container.frame = NSRect(origin: .zero, size: size)
+        container.appearance = appearance(for: store.barAppearance)
+
+        // Обёртка: стекло снизу, кнопки сверху. Обе точно совпадают по геометрии,
+        // потому что построены из одних и тех же отступов и зазоров.
+        // Поле по краям. Стекло рисует собственную тень и свечение ЗА границами
+        // своего вида, а окно панели строится по размеру содержимого. Без поля
+        // видимая капсула оказывается больше окна: ведёшь мышь к её краю и
+        // выходишь из окна раньше, чем из картинки — курсор становится курсивом
+        // от текста снизу, и нажатие уходит туда же, мимо кнопки.
+        let margin: CGFloat = 0
+        let outer = ArrowCursorView(frame: NSRect(x: 0, y: 0,
+                                                  width: size.width + margin * 2,
+                                                  height: size.height + margin * 2))
+        container.translatesAutoresizingMaskIntoConstraints = true
+        container.frame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
+        outer.addSubview(container)
+        buttons.translatesAutoresizingMaskIntoConstraints = true
+        buttons.frame = container.frame
+        outer.addSubview(buttons)
+
+        // Явные размеры: иначе fittingSize пустой обёртки равен нулю
+        // и окно панели схлопнется.
+        outer.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            outer.widthAnchor.constraint(equalToConstant: size.width + margin * 2),
+            outer.heightAnchor.constraint(equalToConstant: size.height + margin * 2),
+        ])
+        outer.appearance = appearance(for: store.barAppearance)
+        return outer
     }
 
     private func appearance(for setting: BarAppearance) -> NSAppearance? {
@@ -141,6 +307,7 @@ final class PopupController {
             glass.style = store.barStyle == .glassClear ? .clear : .regular
             glass.tintColor = store.tintColor
             glass.cornerRadius = radius
+
             stack.translatesAutoresizingMaskIntoConstraints = true
             stack.frame = NSRect(origin: .zero, size: size)
             glass.contentView = stack
@@ -167,7 +334,11 @@ final class PopupController {
         return fill(plain)
     }
 
-    private func makeButton(for action: Action) -> NSButton {
+    /// Размеры задаются вызывающим: кнопка должна заполнять капсулу целиком,
+    /// чтобы нажатие ловилось не только по значку. Значок внутри остаётся
+    /// прежнего кегля и просто стоит по центру — на вид ничего не меняется.
+    private func makeButton(for action: Action,
+                            width: CGFloat, height: CGFloat) -> NSButton {
         let button = NSButton(title: "", target: self, action: #selector(perform(_:)))
 
         // Часть символов появилась в свежих версиях SF Symbols — если имени нет,
@@ -191,8 +362,8 @@ final class PopupController {
         button.identifier = NSUserInterfaceItemIdentifier(action.title)
         button.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 28 * scale),
-            button.heightAnchor.constraint(equalToConstant: 22 * scale),
+            button.widthAnchor.constraint(equalToConstant: width),
+            button.heightAnchor.constraint(equalToConstant: height),
         ])
         return button
     }
@@ -206,26 +377,22 @@ final class PopupController {
 
     // MARK: - Размещение
 
-    private func position(rect selectionRect: NSRect?, size: NSSize, fallback: NSPoint) -> NSPoint {
-        let gap: CGFloat = 8
-        var origin: NSPoint
-        if let rect = selectionRect, rect.width > 0 || rect.height > 0 {
-            // Над выделением, по центру.
-            origin = NSPoint(x: rect.midX - size.width / 2, y: rect.maxY + gap)
-        } else {
-            origin = NSPoint(x: fallback.x - size.width / 2, y: fallback.y + gap * 2)
-        }
+    /// Панель ставится у курсора, а не над выделением: так она всегда
+    /// оказывается там, где взгляд, и не прыгает по экрану вслед за длинным
+    /// выделением, начало которого может быть далеко от места отпускания мыши.
+    private func position(size: NSSize, cursor: NSPoint) -> NSPoint {
+        let gap: CGFloat = 14
+        var origin = NSPoint(x: cursor.x - size.width / 2, y: cursor.y + gap)
 
-        // Не вылезать за пределы экрана, на котором находимся.
-        let screen = NSScreen.screens.first { $0.frame.contains(origin) }
+        let screen = NSScreen.screens.first { $0.frame.contains(cursor) }
             ?? NSScreen.main
             ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
+
         origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+        // Сверху не помещается — показываем под курсором.
         if origin.y + size.height > visible.maxY {
-            // Сверху не помещается — показываем под выделением.
-            let rectMinY = selectionRect?.minY ?? fallback.y
-            origin.y = rectMinY - size.height - gap
+            origin.y = cursor.y - size.height - gap
         }
         origin.y = max(origin.y, visible.minY + 4)
         return origin

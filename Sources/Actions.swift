@@ -8,6 +8,11 @@ struct Action {
     let run: (String) -> Void
     var tooltip: String? = nil
 
+    /// Номер смысловой группы: встроенные, ссылки, команды оболочки.
+    /// В стеклянном стиле каждая группа получает свою капсулу, как в панелях
+    /// инструментов Apple; остальные стили признак не используют.
+    var group: Int = 0
+
     // MARK: - Вспомогательное
 
     static func urlEncoded(_ text: String) -> String {

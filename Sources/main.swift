@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// SelectBar — панель действий над выделенным текстом.
 /// Фоновый агент без иконки в доке, живёт в строке меню.
@@ -8,12 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popup = PopupController()
     private var statusItem: NSStatusItem!
     private let settingsWindow = SettingsWindowController()
+    private let popover = NSPopover()
+    private let nowPlaying = NowPlaying()
+    private let marquee = Marquee()
     private let store = ActionStore.shared
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
     private let notifications = NotificationWatcher()
     private var pendingWork: DispatchWorkItem?
-    private var enabled = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyStatusIconVisibility()
@@ -57,17 +60,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = NSImage(systemSymbolName: "text.viewfinder",
                                            accessibilityDescription: "SelectBar")
-        rebuildMenu()
+
+        // Меню не назначаем свойством statusItem: иначе оно перехватывает любой
+        // щелчок и до настроек дело не доходит. Разбираем нажатие сами.
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusItemClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+
+        popover.contentViewController = NSHostingController(rootView: SettingsView(store: .shared))
+        popover.behavior = .transient
+        // Размер задаём явно: иначе панель растягивается под содержимое
+        // и уезжает за края экрана вместо того, чтобы прокручиваться.
+        popover.contentSize = NSSize(width: 300, height: 420)
+
+        startNowPlaying()
     }
 
-    private func rebuildMenu() {
+    // MARK: - Бегущая строка с текущим треком
+
+    private func startNowPlaying() {
+        guard nowPlaying.available else { return }
+
+        marquee.onFrame = { [weak self] frame in
+            guard let button = self?.statusItem?.button else { return }
+            button.title = frame.isEmpty ? "" : " " + frame
+            button.imagePosition = frame.isEmpty ? .imageOnly : .imageLeading
+            // Ширину фиксируем, пока идёт строка: иначе значок дёргался бы
+            // на каждом кадре вслед за шириной букв.
+            self?.statusItem?.length = frame.isEmpty
+                ? NSStatusItem.variableLength : 210
+        }
+
+        nowPlaying.onChange = { [weak self] text in
+            guard let self else { return }
+            self.marquee.show(self.store.showNowPlaying ? text : nil)
+        }
+        nowPlaying.start()
+    }
+
+    /// Левый щелчок — настройки под значком, правый — меню с действиями.
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp
+            || event?.modifierFlags.contains(.control) == true
+        if wantsMenu {
+            showMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    private func togglePopover() {
+        guard let button = statusItem?.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Меню показываем разово: назначаем, щёлкаем, тут же снимаем — иначе оно
+    /// осталось бы висеть на левом щелчке.
+    private func showMenu() {
         guard let statusItem else { return }
+        statusItem.menu = makeMenu()
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    private func makeMenu() -> NSMenu {
         let menu = NSMenu()
 
-        let toggle = NSMenuItem(title: enabled ? "Pause" : "Resume",
-                                action: #selector(toggleEnabled), keyEquivalent: "")
-        toggle.target = self
-        menu.addItem(toggle)
+        let restart = NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r")
+        restart.target = self
+        menu.addItem(restart)
 
         let fans = NSMenuItem(title: "Spin up fans (\(Fans.seconds)s)",
                               action: #selector(spinFans), keyEquivalent: "")
@@ -80,11 +147,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blink.target = self
         blink.isEnabled = Lights.available
         menu.addItem(blink)
-
-        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settings.target = self
-        menu.addItem(settings)
-
 
         menu.addItem(.separator())
 
@@ -99,14 +161,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quit)
-
-        statusItem.menu = menu
+        return menu
     }
 
-    @objc private func toggleEnabled() {
-        enabled.toggle()
-        if !enabled { popup.hide() }
-        rebuildMenu()
+    /// Перезапуск: отложенный запуск нового экземпляра и выход текущего.
+    /// Задержка нужна, чтобы `open` не наткнулся на ещё живой процесс.
+    @objc private func restartApp() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; open '\(path)'"]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 
     @objc private func spinFans() {
@@ -135,7 +201,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard AX.trusted(prompt: false) else { return }
             timer.invalidate()
             MainActor.assumeIsolated { [weak self] in
-                self?.rebuildMenu()
                 self?.startWatching()
             }
         }
@@ -160,13 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { event in
             let code = event.keyCode
             MainActor.assumeIsolated { [weak self] in
-                guard let self, self.enabled, self.store.blinkOnSpace, code == 49 else { return }
+                guard let self, self.store.blinkOnSpace, code == 49 else { return }
                 Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
             }
         }
 
         notifications.onBanner = { [weak self] in
-            guard let self, self.enabled, self.store.blinkOnNotification else { return }
+            guard let self, self.store.blinkOnNotification else { return }
             Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
         }
         notifications.start()
@@ -185,7 +250,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleMouseUp(at point: NSPoint, clickCount: Int) {
-        guard enabled else { return }
         popup.hide()
 
         // Выделение устаканивается не мгновенно после отпускания кнопки.
@@ -198,8 +262,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.reader.offerPaste = self.store.offerPaste && clickCount >= 2
             guard let context = self.reader.read() else { return }
             switch context {
-            case .selection(let selection):
-                self.popup.show(actions: self.store.actions(forSelectedText: selection.text),
+            case .selection(let selection, let editable):
+                self.popup.show(actions: self.store.actions(forSelectedText: selection.text,
+                                                            editable: editable),
                                 text: selection.text,
                                 rect: selection.rect,
                                 near: point)

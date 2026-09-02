@@ -3,8 +3,9 @@ import ApplicationServices
 
 /// Что происходит под курсором в момент отпускания мыши.
 enum Context {
-    /// Есть выделенный текст.
-    case selection(Selection)
+    /// Есть выделенный текст. editable — можно ли в это место вводить:
+    /// от этого зависит, предлагать ли вставку поверх выделения.
+    case selection(Selection, editable: Bool)
     /// Курсор стоит в редактируемом поле, но ничего не выделено —
     /// уместно предложить вставку. rect — прямоугольник каретки.
     case editableField(NSRect?)
@@ -72,9 +73,13 @@ final class SelectionReader {
 
         if Log.enabled, let focused { logElement(focused) }
 
+        // Можно ли вводить в это место: от этого зависит, предлагать ли
+        // вставку рядом с выделением.
+        let editable = focused.map { isEditable($0) } ?? false
+
         if let focused, let selection = selectedText(in: focused) {
             Log.write("выделение получено: \(selection.text.count) символов")
-            return .selection(selection)
+            return .selection(selection, editable: editable)
         }
 
         // Сфокусированный элемент молчит. В приложениях с веб-представлениями
@@ -86,21 +91,21 @@ final class SelectionReader {
             var budget = 400
             if let found = search(focused, depth: 0, budget: &budget) {
                 Log.write("выделение найдено в поддереве фокуса: \(found.text.count) символов")
-                return .selection(found)
+                return .selection(found, editable: editable)
             }
             // Поднимаемся к окну этого элемента и пробуем от него.
             if let windowRef = AX.attribute(focused, kAXWindowAttribute as String) {
                 var budget2 = 400
                 if let found = search(windowRef as! AXUIElement, depth: 0, budget: &budget2) {
                     Log.write("выделение найдено в окне фокуса: \(found.text.count) символов")
-                    return .selection(found)
+                    return .selection(found, editable: editable)
                 }
             }
         }
 
         if let found = selectedTextInFocusedWindow() {
             Log.write("выделение найдено в поддереве: \(found.text.count) символов")
-            return .selection(found)
+            return .selection(found, editable: editable)
         }
         Log.write("выделения не найдено нигде")
 
@@ -151,6 +156,7 @@ final class SelectionReader {
             return Selection(text: text, rect: selectionRect(of: element))
         }
         if let viaMarkers = selectedTextViaMarkers(in: element) { return viaMarkers }
+        if let viaRange = selectedTextViaRange(in: element) { return viaRange }
 
         guard let childrenRef = AX.attribute(element, kAXChildrenAttribute as String),
               let children = childrenRef as? [AXUIElement] else { return nil }
@@ -226,12 +232,40 @@ final class SelectionReader {
         return Self.flipToCocoa(rect)
     }
 
+    /// Запасной путь: текст берётся по выделенному диапазону.
+    ///
+    /// Терминал заявляет AXSelectedText в списке атрибутов, но по нему отдаёт
+    /// пустую строку — проверено по журналу. Настоящий текст достаётся только
+    /// запросом AXStringForRange с диапазоном из AXSelectedTextRange. Так ведут
+    /// себя приложения, рисующие текст сами, а не средствами системы.
+    private func selectedTextViaRange(in element: AXUIElement) -> Selection? {
+        guard let rangeRef = AX.attribute(element, kAXSelectedTextRangeAttribute as String) else {
+            return nil
+        }
+        var range = CFRange()
+        guard AXValueGetValue(rangeRef as! AXValue, .cfRange, &range), range.length > 0 else {
+            return nil
+        }
+        var textRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+                  element,
+                  kAXStringForRangeParameterizedAttribute as CFString,
+                  rangeRef,
+                  &textRef) == .success,
+              let text = textRef as? String,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        Log.write("текст получен по диапазону: \(text.count) символов")
+        return Selection(text: text, rect: selectionRect(of: element))
+    }
+
     private func selectedText(in focused: AXUIElement) -> Selection? {
         if let viaMarkers = selectedTextViaMarkers(in: focused) { return viaMarkers }
         guard let textRef = AX.attribute(focused, kAXSelectedTextAttribute as String),
               let text = textRef as? String,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
+            return selectedTextViaRange(in: focused)
         }
         return Selection(text: text, rect: selectionRect(of: focused))
     }

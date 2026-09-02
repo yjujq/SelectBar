@@ -2,15 +2,34 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var store: ActionStore
+    @State private var tab: Tab = .general
+
+    private enum Tab: Hashable { case general, actions, sensors }
 
     var body: some View {
-        TabView {
-            GeneralTab(store: store)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            ActionsTab(store: store)
-                .tabItem { Label("Actions", systemImage: "list.bullet") }
+        VStack(spacing: 0) {
+            // Свой переключатель вместо стандартного у TabView: тот жмётся
+            // к заголовку окна по центру, а нужен во всю ширину и ниже.
+            Picker("", selection: $tab) {
+                Label("General", systemImage: "gearshape").tag(Tab.general)
+                Label("Actions", systemImage: "list.bullet").tag(Tab.actions)
+                Label("Sensors", systemImage: "fan").tag(Tab.sensors)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+
+            Divider()
+
+            switch tab {
+            case .general: GeneralTab(store: store)
+            case .actions: ActionsTab(store: store)
+            case .sensors: SensorsTab()
+            }
         }
-        .frame(width: 620, height: 460)
+        .frame(width: 300, height: 420)
     }
 }
 
@@ -69,30 +88,7 @@ private struct GeneralTab: View {
             Section {
                 Toggle("Launch at login", isOn: $store.launchAtLogin)
                 Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
-                if !store.showStatusIcon {
-                    Text("The icon is hidden. To get back here, open SelectBar again from Finder — that reopens this window.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Toggle("Blink keyboard on incoming notifications", isOn: $store.blinkOnNotification)
-                Toggle("Blink keyboard on every space press", isOn: $store.blinkOnSpace)
-                if store.blinkOnSpace {
-                    Text("Space is pressed constantly while typing, so the backlight will flicker for as long as you write.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if !InputMonitoring.granted {
-                        HStack {
-                            Text("Input Monitoring is not granted — key presses are not visible.")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                            Spacer()
-                            Button("Open…") { InputMonitoring.openSettings() }
-                        }
-                        Text("After granting it, quit and start SelectBar again — macOS applies this permission only on launch.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Toggle("Show what's playing in the menu bar", isOn: $store.showNowPlaying)
                 Toggle("Show paste bar on double-click in empty fields", isOn: $store.offerPaste)
                 Text("SelectBar reads selections through the Accessibility API only. Apps that do not expose their selection will not show the bar.")
                     .font(.caption)
@@ -100,74 +96,96 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        .scrollContentBackground(.hidden)
+        .frame(maxHeight: .infinity)
     }
 }
 
 private struct ActionsTab: View {
     @ObservedObject var store: ActionStore
-    @State private var selection: UUID?
-
-    private var selectedIndex: Int? {
-        guard let selection else { return nil }
-        return store.definitions.firstIndex { $0.id == selection }
-    }
+    @State private var editing: UUID?
 
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                List(selection: $selection) {
-                    ForEach($store.definitions) { $def in
-                        HStack(spacing: 8) {
-                            Toggle("", isOn: $def.enabled).labelsHidden()
-                            Image(systemName: symbolOrFallback(def.symbol))
-                                .frame(width: 18)
-                            Text(def.title.isEmpty ? "Untitled" : def.title)
-                            Spacer()
-                            if !def.isBuiltin {
-                                Text("custom").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        .tag(def.id)
-                    }
-                    .onMove { from, to in
-                        store.definitions.move(fromOffsets: from, toOffset: to)
-                    }
-                }
-                Divider()
-                HStack(spacing: 6) {
-                    Button { addAction() } label: { Image(systemName: "plus") }
-                        .help("Add a custom item")
-                    Button { removeSelected() } label: { Image(systemName: "minus") }
-                        .help("Remove the selected custom item")
-                        .disabled(selectedIndex.map { store.definitions[$0].isBuiltin } ?? true)
-                    Spacer()
-                    Button("Reset") { store.resetToDefaults(); selection = nil }
-                }
-                .padding(8)
-            }
-            .frame(minWidth: 240)
-
-            detail.frame(minWidth: 300)
+        // Правка показывается на месте списка, а не отдельной модальной
+        // панелью: та при закрытии выпадающего окна оставалась без родителя
+        // и подвешивала настройки целиком.
+        if let id = editing, let index = store.definitions.firstIndex(where: { $0.id == id }) {
+            editor(index)
+        } else {
+            list
         }
     }
 
-    @ViewBuilder private var detail: some View {
-        if let index = selectedIndex {
+    private var list: some View {
+        VStack(spacing: 0) {
+            List {
+                ForEach($store.definitions) { $def in
+                    HStack(spacing: 6) {
+                        Toggle("", isOn: $def.enabled)
+                            .labelsHidden()
+                            .controlSize(.small)
+                        Image(systemName: symbolOrFallback(def.symbol))
+                            .frame(width: 16)
+                        Text(def.title.isEmpty ? "Untitled" : def.title)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button {
+                            editing = def.id
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .onMove { from, to in
+                    store.definitions.move(fromOffsets: from, toOffset: to)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            Divider()
+            HStack(spacing: 6) {
+                Button { addAction() } label: { Image(systemName: "plus") }
+                    .help("Add a custom item")
+                Spacer()
+                Button("Reset") { store.resetToDefaults() }
+            }
+            .controlSize(.small)
+            .padding(6)
+        }
+    }
+
+    private func editor(_ index: Int) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button {
+                    editing = nil
+                } label: {
+                    Label("Actions", systemImage: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                Spacer()
+                if !store.definitions[index].isBuiltin {
+                    Button("Delete", role: .destructive) {
+                        store.definitions.remove(at: index)
+                        editing = nil
+                    }
+                }
+            }
+            .controlSize(.small)
+            .padding(8)
+
+            Divider()
+
             Form {
                 Section {
                     TextField("Title", text: $store.definitions[index].title)
                     TextField("SF Symbol", text: $store.definitions[index].symbol)
-                    HStack {
-                        Text("Preview")
-                        Spacer()
-                        Image(systemName: symbolOrFallback(store.definitions[index].symbol))
-                    }
                     Picker("Show for", selection: $store.definitions[index].context) {
                         ForEach(ActionContext.allCases) { Text($0.title).tag($0) }
                     }
                 }
-
                 Section("Behaviour") {
                     if store.definitions[index].isBuiltin {
                         Text("Built-in action").foregroundStyle(.secondary)
@@ -176,25 +194,18 @@ private struct ActionsTab: View {
                             Text("Open URL").tag("url")
                             Text("Shell command").tag("shell")
                         }
-                        if kindTag(index).wrappedValue == "url" {
-                            TextField("https://example.com/?q={text}", text: templateBinding(index))
-                            Text("{text} is replaced with the selection, URL-encoded.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        } else {
-                            TextField("echo {text} | pbcopy", text: templateBinding(index))
-                            Text("{text} is quoted for the shell; SB_TEXT holds the raw selection.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+                        TextField(kindTag(index).wrappedValue == "url"
+                                  ? "https://example.com/?q={text}" : "echo {text}",
+                                  text: templateBinding(index))
+                        Text(kindTag(index).wrappedValue == "url"
+                             ? "{text} is replaced with the selection, URL-encoded."
+                             : "{text} is quoted for the shell; SB_TEXT holds the raw selection.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
             .formStyle(.grouped)
-        } else {
-            VStack {
-                Spacer()
-                Text("Select an item").foregroundStyle(.secondary)
-                Spacer()
-            }
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -207,17 +218,9 @@ private struct ActionsTab: View {
         let new = ActionDefinition(title: "New item", symbol: "star",
                                    kind: .openURL("https://example.com/?q={text}"))
         store.definitions.append(new)
-        selection = new.id
+        editing = new.id
     }
 
-    private func removeSelected() {
-        guard let index = selectedIndex, !store.definitions[index].isBuiltin else { return }
-        store.definitions.remove(at: index)
-        selection = nil
-    }
-
-    /// Тип пользовательского пункта — отдельной привязкой, потому что
-    /// он хранится как перечисление со связанным значением.
     private func kindTag(_ index: Int) -> Binding<String> {
         Binding(
             get: {
@@ -263,6 +266,27 @@ final class SettingsWindowController {
             w.title = "SelectBar Settings"
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
+
+            // Прозрачность: размытие вместо сплошной заливки окна.
+            // Подложки внутри уже прозрачны (.scrollContentBackground(.hidden)),
+            // поэтому сквозь них видно именно это размытие, а не серый фон.
+            let blur = NSVisualEffectView()
+            blur.material = .underWindowBackground
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            blur.autoresizingMask = [.width, .height]
+
+            let host = hosting.view
+            host.autoresizingMask = [.width, .height]
+            host.frame = blur.bounds
+            blur.frame = host.frame
+            host.removeFromSuperview()
+            blur.addSubview(host)
+            w.contentView = blur
+
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.titlebarAppearsTransparent = true
             w.center()
             window = w
         }

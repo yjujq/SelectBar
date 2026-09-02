@@ -28,7 +28,7 @@ enum ActionContext: String, Codable, CaseIterable, Identifiable {
         case .plainText:  return "Plain text (not links or emails)"
         case .links:      return "Links only"
         case .emails:     return "Emails only"
-        case .emptyField: return "Empty input field"
+        case .emptyField: return "Editable fields"
         }
     }
 
@@ -100,6 +100,9 @@ final class ActionStore: ObservableObject {
     /// Мигать подсветкой на каждое нажатие пробела.
     @Published var blinkOnSpace = false { didSet { defaults.set(blinkOnSpace, forKey: "blinkOnSpace") } }
 
+    /// Показывать ли бегущей строкой то, что играет.
+    @Published var showNowPlaying = true { didSet { defaults.set(showNowPlaying, forKey: "showNowPlaying") } }
+
     /// Показывать ли значок в строке меню. Выключение прячет единственный вход
     /// в настройки, поэтому повторный запуск приложения открывает их сам.
     @Published var showStatusIcon = true {
@@ -125,6 +128,7 @@ final class ActionStore: ObservableObject {
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
         blinkOnSpace = defaults.object(forKey: "blinkOnSpace") as? Bool ?? false
         blinkOnNotification = defaults.object(forKey: "blinkOnNotification") as? Bool ?? true
+        showNowPlaying = defaults.object(forKey: "showNowPlaying") as? Bool ?? true
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
@@ -206,23 +210,34 @@ final class ActionStore: ObservableObject {
 
     // MARK: - Превращение настроек в действия панели
 
-    func actions(forSelectedText text: String) -> [Action] {
-        definitions
+    func actions(forSelectedText text: String, editable: Bool) -> [Action] {
+        let clip = clipboardPreview()
+        return definitions
             .filter { def in
-                guard def.enabled, def.context != .emptyField, def.context.matches(text) else { return false }
+                guard def.enabled else { return false }
+                // Вставка уместна везде, где можно вводить: в пустом поле она
+                // просто вставит, поверх выделения — заменит его.
+                if def.context == .emptyField { return editable && clip != nil }
+                guard def.context.matches(text) else { return false }
                 if let limit = def.maxTextLength, text.count > limit { return false }
                 return true
             }
-            .compactMap { runtime($0) }
+            .compactMap { def in
+                runtime(def, tooltipSuffix: def.context == .emptyField ? clip : nil)
+            }
+    }
+
+    /// Начало содержимого буфера — для подсказки на кнопке вставки.
+    private func clipboardPreview() -> String? {
+        guard let clip = NSPasteboard.general.string(forType: .string) else { return nil }
+        let trimmed = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.count > 40 ? String(trimmed.prefix(40)) + "…" : trimmed
     }
 
     func actionsForEmptyField() -> [Action] {
-        guard let clip = NSPasteboard.general.string(forType: .string),
-              !clip.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        let preview = clip.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\n", with: " ")
-        let short = preview.count > 40 ? String(preview.prefix(40)) + "…" : preview
-
+        guard let short = clipboardPreview() else { return [] }
         return definitions
             .filter { $0.enabled && $0.context == .emptyField }
             .compactMap { runtime($0, tooltipSuffix: short) }
@@ -234,18 +249,19 @@ final class ActionStore: ObservableObject {
         case .builtin(let id):
             guard let run = Action.builtinRun(id) else { return nil }
             return Action(title: def.title, symbol: def.symbol,
-                          isRelevant: { _ in true }, run: run, tooltip: tooltip)
+                          isRelevant: { _ in true }, run: run, tooltip: tooltip,
+                          group: 0)
         case .openURL(let template):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in
                               let url = template.replacingOccurrences(
                                   of: "{text}", with: Action.urlEncoded(text))
                               Action.open(url)
-                          }, tooltip: tooltip)
+                          }, tooltip: tooltip, group: 1)
         case .shell(let command):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in Action.runShell(command, text: text) },
-                          tooltip: tooltip)
+                          tooltip: tooltip, group: 2)
         }
     }
 }
