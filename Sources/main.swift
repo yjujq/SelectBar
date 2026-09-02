@@ -110,18 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         restart.target = self
         menu.addItem(restart)
 
-        let fans = NSMenuItem(title: "Spin up fans (\(Fans.seconds)s)",
-                              action: #selector(spinFans), keyEquivalent: "")
-        fans.target = self
-        fans.isEnabled = Fans.available
-        menu.addItem(fans)
-
-        let blink = NSMenuItem(title: "Blink keyboard",
-                               action: #selector(blinkLights), keyEquivalent: "")
-        blink.target = self
-        blink.isEnabled = Lights.available
-        menu.addItem(blink)
-
         menu.addItem(.separator())
 
         // Пока доступ не выдан — показываем путь к настройкам. После выдачи
@@ -147,14 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         task.arguments = ["-c", "sleep 1; open '\(path)'"]
         try? task.run()
         NSApp.terminate(nil)
-    }
-
-    @objc private func spinFans() {
-        Fans.spinUp()
-    }
-
-    @objc private func blinkLights() {
-        Task { await Lights.blink() }
     }
 
     @objc private func openSettings() {
