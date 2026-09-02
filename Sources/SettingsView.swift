@@ -109,9 +109,6 @@ private struct GeneralTab: View {
                 if store.barTint != nil {
                     ColorPicker("Tint colour", selection: tint, supportsOpacity: true)
                 }
-                Text("Changes apply the next time the bar appears.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section {
