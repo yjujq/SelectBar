@@ -10,8 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let settingsWindow = SettingsWindowController()
     private let popover = NSPopover()
-    private let nowPlaying = NowPlaying()
-    private let marquee = Marquee()
     private let store = ActionStore.shared
     private var mouseMonitor: Any?
     private let notifications = NotificationWatcher()
@@ -72,29 +70,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // и уезжает за края экрана вместо того, чтобы прокручиваться.
         popover.contentSize = NSSize(width: 300, height: 420)
 
-        startNowPlaying()
-    }
-
-    // MARK: - Бегущая строка с текущим треком
-
-    private func startNowPlaying() {
-        guard nowPlaying.available else { return }
-
-        marquee.onFrame = { [weak self] frame in
-            guard let button = self?.statusItem?.button else { return }
-            button.title = frame.isEmpty ? "" : " " + frame
-            button.imagePosition = frame.isEmpty ? .imageOnly : .imageLeading
-            // Ширину фиксируем, пока идёт строка: иначе значок дёргался бы
-            // на каждом кадре вслед за шириной букв.
-            self?.statusItem?.length = frame.isEmpty
-                ? NSStatusItem.variableLength : 210
-        }
-
-        nowPlaying.onChange = { [weak self] text in
-            guard let self else { return }
-            self.marquee.show(self.store.showNowPlaying ? text : nil)
-        }
-        nowPlaying.start()
     }
 
     /// Левый щелчок — настройки под значком, правый — меню с действиями.

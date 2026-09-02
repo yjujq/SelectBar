@@ -62,7 +62,6 @@ final class SelectionReader {
     var offerPaste = true
 
     func read() -> Context? {
-        Log.write("--- отпускание мыши ---")
         let system = AXUIElementCreateSystemWide()
         if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
             AX.enableManualAccessibility(pid: pid)
@@ -71,14 +70,11 @@ final class SelectionReader {
             $0 as! AXUIElement
         }
 
-        if Log.enabled, let focused { logElement(focused) }
-
         // Можно ли вводить в это место: от этого зависит, предлагать ли
         // вставку рядом с выделением.
         let editable = focused.map { isEditable($0) } ?? false
 
         if let focused, let selection = selectedText(in: focused) {
-            Log.write("выделение получено: \(selection.text.count) символов")
             return .selection(selection, editable: editable)
         }
 
@@ -90,24 +86,20 @@ final class SelectionReader {
         if let focused {
             var budget = 400
             if let found = search(focused, depth: 0, budget: &budget) {
-                Log.write("выделение найдено в поддереве фокуса: \(found.text.count) символов")
                 return .selection(found, editable: editable)
             }
             // Поднимаемся к окну этого элемента и пробуем от него.
             if let windowRef = AX.attribute(focused, kAXWindowAttribute as String) {
                 var budget2 = 400
                 if let found = search(windowRef as! AXUIElement, depth: 0, budget: &budget2) {
-                    Log.write("выделение найдено в окне фокуса: \(found.text.count) символов")
                     return .selection(found, editable: editable)
                 }
             }
         }
 
         if let found = selectedTextInFocusedWindow() {
-            Log.write("выделение найдено в поддереве: \(found.text.count) символов")
             return .selection(found, editable: editable)
         }
-        Log.write("выделения не найдено нигде")
 
         // Выделения нет. Если курсор в поле для ввода — предложим вставку,
         // и запасной путь через ⌘C тут не нужен: копировать всё равно нечего.
@@ -116,21 +108,6 @@ final class SelectionReader {
         }
 
         return nil
-    }
-
-    /// Полный разбор элемента: роль и все атрибуты, которые он умеет отдавать.
-    /// Именно этот список отвечает, можно ли отсюда достать выделение.
-    private func logElement(_ element: AXUIElement) {
-        let app = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
-        let role = (AX.attribute(element, kAXRoleAttribute as String) as? String) ?? "?"
-        let subrole = (AX.attribute(element, kAXSubroleAttribute as String) as? String) ?? "-"
-        var names: CFArray?
-        var attributes: [String] = []
-        if AXUIElementCopyAttributeNames(element, &names) == .success, let list = names as? [String] {
-            attributes = list
-        }
-        Log.write("приложение=\(app) роль=\(role) подроль=\(subrole)")
-        Log.write("атрибуты (\(attributes.count)): \(attributes.joined(separator: ", "))")
     }
 
     /// Обойти поддерево окна в поисках элемента с непустым выделением.
@@ -256,7 +233,6 @@ final class SelectionReader {
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        Log.write("текст получен по диапазону: \(text.count) символов")
         return Selection(text: text, rect: selectionRect(of: element))
     }
 

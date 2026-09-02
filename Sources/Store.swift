@@ -102,7 +102,6 @@ final class ActionStore: ObservableObject {
     /// Мигать подсветкой на каждое нажатие пробела.
 
     /// Показывать ли бегущей строкой то, что играет.
-    @Published var showNowPlaying = true { didSet { defaults.set(showNowPlaying, forKey: "showNowPlaying") } }
 
     /// Показывать ли значок в строке меню. Выключение прячет единственный вход
     /// в настройки, поэтому повторный запуск приложения открывает их сам.
@@ -131,7 +130,6 @@ final class ActionStore: ObservableObject {
         offerPaste = defaults.object(forKey: "offerPaste") as? Bool ?? true
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
         blinkOnNotification = defaults.object(forKey: "blinkOnNotification") as? Bool ?? true
-        showNowPlaying = defaults.object(forKey: "showNowPlaying") as? Bool ?? true
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system

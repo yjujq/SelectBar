@@ -58,9 +58,8 @@ final class NotificationWatcher {
         do {
             try process.run()
             task = process
-            Log.write("слежу за уведомлениями через системный журнал")
         } catch {
-            Log.write("не удалось запустить чтение журнала: \(error)")
+            NSLog("SelectBar: не удалось запустить чтение журнала: \(error)")
         }
     }
 
@@ -98,14 +97,11 @@ final class NotificationWatcher {
         tail = lines.removeLast()
 
         for line in lines {
-            guard let range = line.range(of: Self.marker) else { continue }
-            let app = String(line[range.upperBound...].prefix { $0 != "\"" })
-
+            guard line.contains(Self.marker) else { continue }
             let now = Date()
             guard now.timeIntervalSince(lastFired) > cooldown else { continue }
             lastFired = now
 
-            Log.write("уведомление от \(app)")
             onBanner?()
         }
     }
