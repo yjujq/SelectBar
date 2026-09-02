@@ -4,19 +4,22 @@ struct SettingsView: View {
     @ObservedObject var store: ActionStore
     @State private var tab: Tab = .general
 
-    private enum Tab: Hashable { case general, actions, sensors }
+    private enum Tab: Hashable { case general, actions }
 
     var body: some View {
         VStack(spacing: 0) {
             // Свой переключатель вместо стандартного у TabView: тот жмётся
             // к заголовку окна по центру, а нужен во всю ширину и ниже.
-            Picker("", selection: $tab) {
-                Label("General", systemImage: "gearshape").tag(Tab.general)
-                Label("Actions", systemImage: "list.bullet").tag(Tab.actions)
-                Label("Sensors", systemImage: "fan").tag(Tab.sensors)
+            //
+            // И вместо сегментированного Picker — свой ряд кнопок: тот
+            // показывает у Label только подпись, а картинку отбрасывает,
+            // поэтому иконку рядом с текстом им не получить.
+            HStack(spacing: 4) {
+                TabButton(title: "General", symbol: "gearshape",
+                          selected: tab == .general) { tab = .general }
+                TabButton(title: "Actions", symbol: "list.bullet",
+                          selected: tab == .actions) { tab = .actions }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
             .padding(.horizontal, 10)
             .padding(.top, 8)
             .padding(.bottom, 8)
@@ -26,10 +29,36 @@ struct SettingsView: View {
             switch tab {
             case .general: GeneralTab(store: store)
             case .actions: ActionsTab(store: store)
-            case .sensors: SensorsTab()
             }
         }
         .frame(width: 300, height: 420)
+    }
+}
+
+/// Кнопка вкладки: иконка и подпись рядом, во всю доступную ширину.
+private struct TabButton: View {
+    let title: String
+    let symbol: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                Text(title)
+            }
+            .font(.system(size: 11, weight: selected ? .semibold : .regular))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(selected ? Color.primary.opacity(0.12) : Color.clear)
+            )
+            // Иначе нажатие ловится только по самим буквам и значку.
+            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -88,8 +117,6 @@ private struct GeneralTab: View {
             Section {
                 Toggle("Launch at login", isOn: $store.launchAtLogin)
                 Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
-                Toggle("Show what's playing in the menu bar", isOn: $store.showNowPlaying)
-                Toggle("Show paste bar on double-click in empty fields", isOn: $store.offerPaste)
                 Text("SelectBar reads selections through the Accessibility API only. Apps that do not expose their selection will not show the bar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

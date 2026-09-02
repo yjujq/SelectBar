@@ -1,97 +1,92 @@
 import AppKit
-import ApplicationServices
 
-/// Замечает появление баннеров уведомлений.
+/// Замечает доставку уведомлений по системному журналу.
 ///
-/// Баннеры рисует отдельный системный процесс NotificationCenter. Подписываемся
-/// через Accessibility на создание его окон: так срабатывает на уведомление от
-/// любого приложения, и не нужен доступ к базе уведомлений.
+/// Раньше здесь была подписка через Accessibility на создание окон процесса
+/// центра уведомлений. Замеры показали, что так ловится только панель,
+/// открываемая щелчком по часам: за время проверки пришло два десятка писем,
+/// а событий не было ни одного — баннер не создаёт ни окна, ни даже элемента.
+/// Поэтому менять пришлось не условие отбора, а сам способ слежения.
+///
+/// Штатный путь — системный журнал. Служба `usernoted` на каждое доставленное
+/// уведомление пишет строку с записью вида `NotificationRecord app:"…"`.
+/// Читаем поток командой `log stream`: обычная программа, никаких частных
+/// интерфейсов и никаких особых разрешений.
 @MainActor
 final class NotificationWatcher {
-    /// Вызывается на каждый замеченный баннер.
+    /// Вызывается на каждое замеченное уведомление.
     var onBanner: (() -> Void)?
 
-    private var observer: AXObserver?
-    private var watchedPID: pid_t = 0
-    private var retryTimer: Timer?
+    private var task: Process?
+    private var tail = ""
     private var lastFired = Date.distantPast
 
-    /// Одно уведомление может породить несколько окон — не мигаем на каждое.
-    private let cooldown: TimeInterval = 1.0
+    /// Одно уведомление даёт в журнале несколько строк — не мигаем на каждую.
+    private let cooldown: TimeInterval = 1.5
+
+    /// Метка в строке журнала, по которой опознаётся доставка.
+    private static let marker = "NotificationRecord app:\""
 
     func start() {
-        attach()
-        // Процесс уведомлений может перезапускаться — periодически проверяем.
-        retryTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
-            MainActor.assumeIsolated { [weak self] in self?.attachIfNeeded() }
+        stop()
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
+        process.arguments = [
+            "stream",
+            "--style", "compact",
+            // Сужаем поток до нужной службы: иначе через нас пошёл бы весь
+            // системный журнал, а это заметная нагрузка на ровном месте.
+            "--predicate", "process == \"usernoted\"",
+        ]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        // Обработчик вызывается в фоновой очереди, поэтому к объекту,
+        // привязанному к главному потоку, обращаемся только после перехода.
+        pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.ingest(chunk) }
+            }
+        }
+
+        do {
+            try process.run()
+            task = process
+            Log.write("слежу за уведомлениями через системный журнал")
+        } catch {
+            Log.write("не удалось запустить чтение журнала: \(error)")
         }
     }
 
     func stop() {
-        retryTimer?.invalidate()
-        retryTimer = nil
-        detach()
+        if let task, task.isRunning { task.terminate() }
+        task = nil
+        tail = ""
     }
 
-    private var notificationCenterPID: pid_t? {
-        NSWorkspace.shared.runningApplications.first {
-            $0.bundleIdentifier == "com.apple.notificationcenterui"
-        }?.processIdentifier
-    }
+    /// Разбор очередного куска потока.
+    ///
+    /// Кусок может оборваться на середине строки, поэтому неполный хвост
+    /// сохраняем и приклеиваем к следующему.
+    private func ingest(_ chunk: String) {
+        var lines = (tail + chunk).components(separatedBy: "\n")
+        tail = lines.removeLast()
 
-    private func attachIfNeeded() {
-        guard let pid = notificationCenterPID else { return }
-        if observer == nil || pid != watchedPID { attach() }
-    }
+        for line in lines {
+            guard let range = line.range(of: Self.marker) else { continue }
+            let app = String(line[range.upperBound...].prefix { $0 != "\"" })
 
-    private func attach() {
-        detach()
-        guard let pid = notificationCenterPID else {
-            Log.write("центр уведомлений не найден")
-            return
+            let now = Date()
+            guard now.timeIntervalSince(lastFired) > cooldown else { continue }
+            lastFired = now
+
+            Log.write("уведомление от \(app)")
+            onBanner?()
         }
-
-        var created: AXObserver?
-        let callback: AXObserverCallback = { _, _, _, refcon in
-            guard let refcon else { return }
-            let watcher = Unmanaged<NotificationWatcher>.fromOpaque(refcon).takeUnretainedValue()
-            MainActor.assumeIsolated { watcher.handleBanner() }
-        }
-        guard AXObserverCreate(pid, callback, &created) == .success, let observer = created else {
-            Log.write("не удалось создать наблюдателя для pid \(pid)")
-            return
-        }
-
-        let app = AXUIElementCreateApplication(pid)
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        let status = AXObserverAddNotification(observer, app,
-                                               kAXWindowCreatedNotification as CFString, context)
-        guard status == .success else {
-            Log.write("подписка на окна не удалась: \(status.rawValue)")
-            return
-        }
-
-        CFRunLoopAddSource(CFRunLoopGetCurrent(),
-                           AXObserverGetRunLoopSource(observer), .defaultMode)
-        self.observer = observer
-        watchedPID = pid
-        Log.write("слежу за уведомлениями, pid \(pid)")
-    }
-
-    private func detach() {
-        if let observer {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(),
-                                  AXObserverGetRunLoopSource(observer), .defaultMode)
-        }
-        observer = nil
-        watchedPID = 0
-    }
-
-    private func handleBanner() {
-        let now = Date()
-        guard now.timeIntervalSince(lastFired) > cooldown else { return }
-        lastFired = now
-        Log.write("замечен баннер уведомления")
-        onBanner?()
     }
 }

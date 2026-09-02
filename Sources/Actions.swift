@@ -118,6 +118,29 @@ struct Action {
 
     // MARK: - Встроенные действия
 
+    /// Нажатие без модификаторов.
+    static func pressPlain(key: CGKeyCode) {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
+        CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)?.post(tap: .cghidEventTap)
+        CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)?.post(tap: .cghidEventTap)
+    }
+
+    /// Заменить выделенное: кладём в буфер и вставляем.
+    ///
+    /// Небольшая задержка нужна, чтобы панель успела закрыться и вставка
+    /// пришла в исходное поле, а не в саму панель.
+    static func replaceSelection(with text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { pressCommand(key: 9) }
+    }
+
+    /// Схлопнуть подряд идущие пробелы и обрезать края.
+    static func squeezeSpaces(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
     static func builtinRun(_ id: String) -> ((String) -> Void)? {
         switch id {
         case "copy":
@@ -149,6 +172,74 @@ struct Action {
             }
         case "paste":
             return { _ in pressCommand(key: 9) }   // 9 = V
+
+        // Преобразования текста по образцу расширений PopClip.
+        case "upper":
+            return { replaceSelection(with: $0.uppercased()) }
+        case "lower":
+            return { replaceSelection(with: $0.lowercased()) }
+        case "title":
+            return { replaceSelection(with: $0.localizedCapitalized) }
+        case "trim":
+            return { replaceSelection(with: squeezeSpaces($0)) }
+        case "sortLines":
+            return { text in
+                let lines = text.components(separatedBy: .newlines)
+                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+                replaceSelection(with: lines.joined(separator: "\n"))
+            }
+        case "cut":
+            return { text in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                // 51 = Delete. Вставку тут не используем: удалять нужно
+                // выделенное, а не подменять его содержимым буфера.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { pressPlain(key: 51) }
+            }
+        case "sentence":
+            return { text in
+                let lower = text.lowercased()
+                guard let first = lower.first else { return }
+                replaceSelection(with: String(first).uppercased() + lower.dropFirst())
+            }
+        case "slugify":
+            return { text in
+                let allowed = CharacterSet.alphanumerics
+                let parts = text.lowercased().unicodeScalars
+                    .map { allowed.contains($0) ? Character($0) : " " }
+                replaceSelection(with: String(parts)
+                    .split(separator: " ")
+                    .joined(separator: "-"))
+            }
+        case "reverseLines":
+            return { text in
+                let lines = text.components(separatedBy: .newlines).reversed()
+                replaceSelection(with: lines.joined(separator: "\n"))
+            }
+        case "noSpaces":
+            return { text in
+                replaceSelection(with: text.filter { !$0.isWhitespace })
+            }
+        case "quote":
+            return { replaceSelection(with: "\u{201C}" + $0 + "\u{201D}") }
+        case "comment":
+            return { text in
+                let lines = text.components(separatedBy: .newlines).map { "// " + $0 }
+                replaceSelection(with: lines.joined(separator: "\n"))
+            }
+        case "urlEncode":
+            return { replaceSelection(with: urlEncoded($0)) }
+        case "base64":
+            return { replaceSelection(with: Data($0.utf8).base64EncodedString()) }
+
+        case "joinLines":
+            return { text in
+                // Переводы строк в пробелы, затем схлопывание: иначе на месте
+                // отступов остаются двойные пробелы.
+                let joined = text.components(separatedBy: .newlines).joined(separator: " ")
+                replaceSelection(with: squeezeSpaces(joined))
+            }
         default:
             return nil
         }
