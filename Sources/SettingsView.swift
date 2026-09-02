@@ -117,9 +117,6 @@ private struct GeneralTab: View {
             Section {
                 Toggle("Launch at login", isOn: $store.launchAtLogin)
                 Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
-                Text("SelectBar reads selections through the Accessibility API only. Apps that do not expose their selection will not show the bar.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
