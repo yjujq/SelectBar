@@ -1,8 +1,8 @@
 import AppKit
 
-/// Подсветка клавиатуры через приватный CoreBrightness.
-/// Публичного API нет; методы класса выяснены перечислением через среду
-/// выполнения, а не подобраны наугад.
+/// Keyboard backlight through the private CoreBrightness framework.
+/// There is no public API; the class methods were found by enumerating them
+/// through the runtime rather than guessed.
 @objc private protocol KeyboardBrightnessAPI {
     func copyKeyboardBacklightIDs() -> NSArray?
     func brightnessForKeyboard(_ keyboard: UInt64) -> Float
@@ -15,7 +15,7 @@ import AppKit
 enum Lights {
     private static var busy = false
 
-    // MARK: - Клавиатура
+    // MARK: - Keyboard
 
     private static let keyboard: (client: KeyboardBrightnessAPI, id: UInt64)? = {
         guard dlopen("/System/Library/PrivateFrameworks/CoreBrightness.framework/CoreBrightness",
@@ -33,25 +33,25 @@ enum Lights {
 
     private static func setKeyboard(_ level: Float) {
         guard let keyboard else { return }
-        // Скорость затухания 0 с немедленной фиксацией: иначе система
-        // сглаживает переход и на быстром такте свет не доходит до края.
+        // Fade speed 0 with an immediate commit: otherwise the system eases
+        // the transition and at a fast beat the light never reaches full.
         _ = keyboard.client.setBrightness(level, fadeSpeed: 0, commit: true,
                                           forKeyboard: keyboard.id)
     }
 
-    /// Мигать подсветкой клавиатуры заданное время, затем вернуть как было.
-    /// Такт намеренно неторопливый: у светодиодов есть инерция разгорания,
-    /// и на частом мигании свет не успевает дойти до края.
+    /// Blink the keyboard backlight for a given time, then restore it.
+    /// The beat is deliberately unhurried: the LEDs take time to come up, and
+    /// with fast blinking the light never reaches full.
     static func blink(duration: Duration = .seconds(7),
                       interval: Duration = .milliseconds(500)) async {
-        guard !busy else { return }        // повторное нажатие не наслаивается
+        guard !busy else { return }        // a second press does not stack
         busy = true
         defer { busy = false }
 
         let originalKeyboard = keyboard.map { $0.client.brightnessForKeyboard($0.id) }
 
-        // Считаем по времени, а не по числу вспышек: длительность задана
-        // напрямую, и она не поедет при смене темпа мигания.
+        // Counted by time rather than by number of flashes: the duration is
+        // given directly and will not drift if the beat changes.
         let clock = ContinuousClock()
         let start = clock.now
         repeat {

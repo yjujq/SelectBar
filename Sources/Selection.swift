@@ -1,36 +1,36 @@
 import AppKit
 import ApplicationServices
 
-/// Что происходит под курсором в момент отпускания мыши.
+/// What is under the cursor at the moment the mouse is released.
 enum Context {
-    /// Есть выделенный текст. editable — можно ли в это место вводить:
-    /// от этого зависит, предлагать ли вставку поверх выделения.
+    /// There is selected text. `editable` says whether typing is allowed here,
+    /// which decides whether to offer pasting over the selection.
     case selection(Selection, editable: Bool)
-    /// Курсор стоит в редактируемом поле, но ничего не выделено —
-    /// уместно предложить вставку. rect — прямоугольник каретки.
+    /// The caret sits in an editable field with nothing selected, so offering
+    /// a paste makes sense. `rect` is the caret's rectangle.
     case editableField(NSRect?)
 }
 
-/// Что удалось узнать о текущем выделении.
+/// What could be learned about the current selection.
 struct Selection {
     let text: String
-    /// Прямоугольник выделения в координатах Cocoa (начало отсчёта снизу слева).
-    /// nil, если приложение не сообщило геометрию — тогда панель ставится у курсора.
+    /// The selection rectangle in Cocoa coordinates (origin at bottom left).
+    /// nil when the app reported no geometry — the bar then sits at the cursor.
     let rect: NSRect?
 }
 
 enum AX {
-    /// Выдан ли доступ в «Универсальный доступ». prompt = показать системное окно.
+    /// Whether Accessibility access is granted. `prompt` shows the system dialog.
     static func trusted(prompt: Bool) -> Bool {
-        // Ключ задан строкой намеренно: системная константа объявлена как
-        // глобальная переменная, а такие Swift 6 читать из любого контекста
-        // не разрешает. Значение у неё фиксированное.
+        // The key is spelled out deliberately: the system constant is declared
+        // as a global variable, and Swift 6 will not let such things be read
+        // from any context. Its value is fixed.
         let options = ["AXTrustedCheckOptionPrompt": prompt]
         return AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
 
-    /// Ограничиваем ожидание ответа: подвисшее приложение не должно
-    /// подвешивать нас на каждом клике.
+    /// Cap how long we wait for an answer: a hung application must not hang
+    /// us on every click.
     static func setTimeout(_ seconds: Float, for element: AXUIElement) {
         AXUIElementSetMessagingTimeout(element, seconds)
     }
@@ -43,13 +43,14 @@ enum AX {
         return value
     }
 
-    /// Включить поддержку Accessibility в приложении, которое держит её
-    /// выключенной ради быстродействия — так делают Chrome и всё на его основе.
+    /// Turn on Accessibility support in an application that keeps it off for
+    /// speed — Chrome and everything built on it does exactly that.
     ///
-    /// Признака два, и оба нужны. `AXManualAccessibility` понимали приложения
-    /// на Chromium, но Chrome его отверг: замер показал код −25205, то есть
-    /// «атрибут не поддерживается». `AXEnhancedUserInterface` старше и общее —
-    /// именно им включает поддержку VoiceOver, и его признают почти все.
+    /// There are two signals and both are needed. `AXManualAccessibility` was
+    /// understood by Chromium-based apps, but Chrome rejected it: measurement
+    /// returned code -25205, meaning "attribute not supported".
+    /// `AXEnhancedUserInterface` is older and more general — it is what
+    /// VoiceOver uses to switch support on, and nearly everything honours it.
     static func enableManualAccessibility(pid: pid_t) {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
@@ -57,14 +58,14 @@ enum AX {
     }
 }
 
-/// Достаёт выделенный текст через Accessibility.
+/// Reads the selected text through Accessibility.
 ///
-/// Синтетического ⌘C здесь намеренно нет: он был бы действием, а не чтением,
-/// и в приложениях вроде Finder приводил бы к копированию выделенных объектов.
-/// Цена отказа — приложения, не отдающие выделение через Accessibility,
-/// панель не показывают вовсе.
+/// There is deliberately no synthetic ⌘C here: it would be an action rather
+/// than a read, and in applications such as Finder it would copy the selected
+/// files. The price of refusing is that applications which do not expose their
+/// selection through Accessibility show no bar at all.
 final class SelectionReader {
-    /// Показывать ли панель вставки при клике в пустое редактируемое поле.
+    /// Whether to show the paste bar when clicking an empty editable field.
     var offerPaste = true
 
     func read() -> Context? {
@@ -76,25 +77,25 @@ final class SelectionReader {
             $0 as! AXUIElement
         }
 
-        // Можно ли вводить в это место: от этого зависит, предлагать ли
-        // вставку рядом с выделением.
+        // Whether typing is allowed here, which decides whether to offer
+        // pasting next to the selection.
         let editable = focused.map { isEditable($0) } ?? false
 
         if let focused, let selection = selectedText(in: focused) {
             return .selection(selection, editable: editable)
         }
 
-        // Сфокусированный элемент молчит. В приложениях с веб-представлениями
-        // выделение может жить не в нём — ищем по поддереву окна.
-        // Сначала поддерево самого сфокусированного элемента: у панелей вроде
-        // быстрого просмотра приложение считает «сфокусированным окном» совсем
-        // другое окно, и поиск от него уходит не в то дерево.
+        // The focused element says nothing. In applications with web views the
+        // selection may live elsewhere, so we search the window's subtree.
+        // First the focused element's own subtree: for panels such as Quick
+        // Look the app reports a completely different window as focused, and a
+        // search from there goes down the wrong tree.
         if let focused {
             var budget = 400
             if let found = search(focused, depth: 0, budget: &budget) {
                 return .selection(found, editable: editable)
             }
-            // Поднимаемся к окну этого элемента и пробуем от него.
+            // Go up to this element's window and try from there.
             if let windowRef = AX.attribute(focused, kAXWindowAttribute as String) {
                 var budget2 = 400
                 if let found = search(windowRef as! AXUIElement, depth: 0, budget: &budget2) {
@@ -107,8 +108,8 @@ final class SelectionReader {
             return .selection(found, editable: editable)
         }
 
-        // Выделения нет. Если курсор в поле для ввода — предложим вставку,
-        // и запасной путь через ⌘C тут не нужен: копировать всё равно нечего.
+        // No selection. If the caret is in an input field, offer a paste; no
+        // ⌘C fallback is needed here, as there is nothing to copy anyway.
         if offerPaste, let focused, isEditable(focused) {
             return .editableField(caretRect(in: focused))
         }
@@ -116,9 +117,9 @@ final class SelectionReader {
         return nil
     }
 
-    /// Обойти поддерево окна в поисках элемента с непустым выделением.
-    /// Обход ограничен по числу узлов и глубине: дерево большого окна может
-    /// быть огромным, а мы работаем на каждом отпускании мыши.
+    /// Walk a window's subtree looking for an element with a non-empty
+    /// selection. The walk is capped by node count and depth: a large window's
+    /// tree can be enormous, and we run on every mouse release.
     private func selectedTextInFocusedWindow() -> Selection? {
         guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return nil }
         let app = AXUIElementCreateApplication(pid)
@@ -149,27 +150,27 @@ final class SelectionReader {
         return nil
     }
 
-    /// Можно ли в этот элемент вводить текст.
+    /// Whether text can be typed into this element.
     ///
-    /// Авторитетный ответ даёт только запрос «можно ли записать значение».
-    /// Роль признаком служить не может: `AXTextArea` носят и области, доступные
-    /// лишь для чтения — просмотрщики логов, справка, части веб-страниц. Раньше
-    /// код при отрицательном ответе всё равно смотрел на роль и предлагал
-    /// вставку туда, где она заведомо не сработает.
+    /// Only asking "is this attribute settable" gives an authoritative answer.
+    /// The role cannot serve as the sign: `AXTextArea` is worn by read-only
+    /// areas too — log viewers, help, parts of web pages. The code used to fall
+    /// back to the role on a negative answer and offered pasting where it could
+    /// not possibly work.
     func isEditable(_ element: AXUIElement) -> Bool {
         var settable: DarwinBoolean = false
         let status = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
         if status == .success {
-            return settable.boolValue          // ответ получен — роль не спрашиваем
+            return settable.boolValue          // we have an answer, no need for the role
         }
-        // Элемент не смог ответить. Только теперь роль как запасной признак.
+        // The element could not answer. Only now the role as a fallback.
         guard let roleRef = AX.attribute(element, kAXRoleAttribute as String),
               let role = roleRef as? String else { return false }
         return ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
     }
 
-    /// Редактируем ли сейчас сфокусированный элемент. Нужно, чтобы предлагать
-    /// вставку только там, где она действительно выполнима.
+    /// Whether the focused element is editable right now. Needed so a paste is
+    /// only offered where it can actually happen.
     func focusedIsEditable() -> Bool {
         let system = AXUIElementCreateSystemWide()
         guard let focusedRef = AX.attribute(system, kAXFocusedUIElementAttribute as String) else {
@@ -178,18 +179,18 @@ final class SelectionReader {
         return isEditable(focusedRef as! AXUIElement)
     }
 
-    /// Прямоугольник каретки — диапазон нулевой длины тоже имеет геометрию.
+    /// The caret rectangle — a zero-length range has geometry too.
     private func caretRect(in element: AXUIElement) -> NSRect? {
         selectionRect(of: element)
     }
 
     // MARK: - Accessibility
 
-    /// Выделение через маркеры WebKit.
+    /// Selection through WebKit text markers.
     ///
-    /// В веб-представлениях (Почта, Safari, справка) атрибута AXSelectedText
-    /// не существует вовсе — выделение публикуется диапазоном текстовых
-    /// маркеров, который превращается в строку параметризованным запросом.
+    /// In web views (Mail, Safari, Help) the AXSelectedText attribute does not
+    /// exist at all — the selection is published as a range of text markers,
+    /// which a parameterised query turns into a string.
     private func selectedTextViaMarkers(in element: AXUIElement) -> Selection? {
         guard let markerRange = AX.attribute(element, "AXSelectedTextMarkerRange") else {
             return nil
@@ -204,7 +205,7 @@ final class SelectionReader {
         return Selection(text: text, rect: markerBounds(of: element, range: markerRange))
     }
 
-    /// Геометрия выделения тем же маркерным путём.
+    /// Selection geometry by the same marker route.
     private func markerBounds(of element: AXUIElement, range: CFTypeRef) -> NSRect? {
         var boundsRef: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(
@@ -215,12 +216,13 @@ final class SelectionReader {
         return Self.flipToCocoa(rect)
     }
 
-    /// Запасной путь: текст берётся по выделенному диапазону.
+    /// Fallback: the text is taken by the selected range.
     ///
-    /// Терминал заявляет AXSelectedText в списке атрибутов, но по нему отдаёт
-    /// пустую строку — проверено по журналу. Настоящий текст достаётся только
-    /// запросом AXStringForRange с диапазоном из AXSelectedTextRange. Так ведут
-    /// себя приложения, рисующие текст сами, а не средствами системы.
+    /// Terminal advertises AXSelectedText among its attributes but returns an
+    /// empty string for it — verified from the log. The real text is only
+    /// reachable through AXStringForRange with the range from
+    /// AXSelectedTextRange. Applications that draw their own text, rather than
+    /// using the system's, behave this way.
     private func selectedTextViaRange(in element: AXUIElement) -> Selection? {
         guard let rangeRef = AX.attribute(element, kAXSelectedTextRangeAttribute as String) else {
             return nil
@@ -252,7 +254,7 @@ final class SelectionReader {
         return Selection(text: text, rect: selectionRect(of: focused))
     }
 
-    /// Геометрия выделения: диапазон -> прямоугольник. Доступно не везде.
+    /// Selection geometry: range to rectangle. Not available everywhere.
     private func selectionRect(of element: AXUIElement) -> NSRect? {
         guard let rangeRef = AX.attribute(element, kAXSelectedTextRangeAttribute as String) else {
             return nil
@@ -273,8 +275,8 @@ final class SelectionReader {
         return Self.flipToCocoa(rect)
     }
 
-    /// Accessibility отдаёт координаты с началом в левом верхнем углу главного
-    /// экрана, у Cocoa начало снизу слева — переворачиваем.
+    /// Accessibility gives coordinates with the origin at the top left of the
+    /// main screen while Cocoa's is at the bottom left, so we flip them.
     static func flipToCocoa(_ rect: CGRect) -> NSRect {
         guard let primary = NSScreen.screens.first else { return rect }
         return NSRect(x: rect.origin.x,

@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard AX.trusted(prompt: true) else {
-            // Разрешение выдаётся не мгновенно — ждём его в фоне.
+            // Permission is not granted instantly — wait for it in the background.
             waitForAccessibility()
             return
         }
@@ -34,14 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopWatching()
     }
 
-    /// Повторный запуск из Finder — единственный способ вернуться к настройкам,
-    /// когда значок скрыт. Поэтому открываем их.
+    /// Relaunching from Finder is the only way back to settings when the icon
+    /// is hidden, so open them.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         settingsWindow.show()
         return true
     }
 
-    // MARK: - Строка меню
+    // MARK: - Menu bar
 
     private func applyStatusIconVisibility() {
         if store.showStatusIcon {
@@ -57,21 +57,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "text.viewfinder",
                                            accessibilityDescription: "SelectBar")
 
-        // Меню не назначаем свойством statusItem: иначе оно перехватывает любой
-        // щелчок и до настроек дело не доходит. Разбираем нажатие сами.
+        // The menu is not assigned to statusItem: that would swallow every
+        // click and settings would never open. We handle the click ourselves.
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         popover.contentViewController = NSHostingController(rootView: SettingsView(store: .shared))
         popover.behavior = .transient
-        // Размер задаём явно: иначе панель растягивается под содержимое
-        // и уезжает за края экрана вместо того, чтобы прокручиваться.
+        // The size is set explicitly: otherwise the popover stretches to fit
+        // its content and runs off the screen instead of scrolling.
         popover.contentSize = NSSize(width: 300, height: 420)
 
     }
 
-    /// Левый щелчок — настройки под значком, правый — меню с действиями.
+    /// Left click shows settings under the icon, right click the menu.
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
         let wantsMenu = event?.type == .rightMouseUp
@@ -93,8 +93,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Меню показываем разово: назначаем, щёлкаем, тут же снимаем — иначе оно
-    /// осталось бы висеть на левом щелчке.
+    /// The menu is shown once: assign, click, remove immediately — otherwise
+    /// it would stay attached to the left click too.
     private func showMenu() {
         guard let statusItem else { return }
         statusItem.menu = makeMenu()
@@ -111,8 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        // Пока доступ не выдан — показываем путь к настройкам. После выдачи
-        // пункт исчезает: напоминать об уже сделанном незачем.
+        // While access is not granted, show the way to the settings. Once it
+        // is, the item disappears: no point reminding about what is done.
         if !AX.trusted(prompt: false) {
             let access = NSMenuItem(title: "Open Accessibility Settings…",
                                     action: #selector(openAccessibilitySettings), keyEquivalent: "")
@@ -125,8 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    /// Перезапуск: отложенный запуск нового экземпляра и выход текущего.
-    /// Задержка нужна, чтобы `open` не наткнулся на ещё живой процесс.
+    /// Restart: launch a new instance after a delay, then quit this one.
+    /// The delay keeps `open` from running into the still-live process.
     @objc private func restartApp() {
         let path = Bundle.main.bundlePath
         let task = Process()
@@ -145,12 +145,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let url = URL(string: url) { NSWorkspace.shared.open(url) }
     }
 
-    // MARK: - Ожидание разрешения
+    // MARK: - Waiting for permission
 
     private func waitForAccessibility() {
         Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { timer in
-            // Проверку и остановку таймера делаем здесь: передавать сам таймер
-            // внутрь изолированного замыкания Swift 6 запрещает.
+            // The check and the invalidation happen here: Swift 6 forbids
+            // passing the timer itself into an isolated closure.
             guard AX.trusted(prompt: false) else { return }
             timer.invalidate()
             MainActor.assumeIsolated { [weak self] in
@@ -159,16 +159,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - Слежение за выделением
+    // MARK: - Watching the selection
 
     private func startWatching() {
-        // Нажатие отслеживаем наравне с отпусканием: по расстоянию между ними
-        // видно, тянули мышь или щёлкнули на месте. От этого зависит задержка.
+        // Mouse-down is tracked alongside mouse-up: the distance between them
+        // shows whether the mouse was dragged or clicked in place, which
+        // decides the delay.
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .leftMouseUp]
         ) { event in
-            // Числа снимаем здесь: сам объект события передавать внутрь
-            // изолированного замыкания нельзя.
+            // The numbers are taken here: the event object itself cannot be
+            // passed into an isolated closure.
             let isDown = event.type == .leftMouseDown
             let clicks = event.clickCount
             let point = NSEvent.mouseLocation
@@ -199,13 +200,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleMouseUp(at point: NSPoint, clickCount: Int) {
         popup.hide()
 
-        // Выделение устаканивается не мгновенно после отпускания кнопки.
+        // The selection does not settle the instant the button is released.
         pendingWork?.cancel()
         let work = DispatchWorkItem {
             MainActor.assumeIsolated { [weak self] in
             guard let self else { return }
-            // Одиночный щелчок в поле — это просто установка курсора, и панель
-            // вставки на него лезть не должна. Нужен двойной.
+            // A single click in a field just places the caret, and the paste
+            // bar has no business appearing for it. A double click is needed.
             self.reader.offerPaste = self.store.offerPaste && clickCount >= 2
             guard let context = self.reader.read() else { return }
             switch context {
@@ -223,19 +224,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pendingWork = work
 
-        // Щелчок на месте может оказаться первым из двойного, и тогда придёт
-        // второе отпускание. Ждём положенный системе промежуток, чтобы успеть
-        // отменить показ: иначе панель появлялась дважды — на первом щелчке
-        // и снова на втором.
+        // A click in place may turn out to be the first of a double, and then
+        // a second release follows. We wait long enough to cancel the showing:
+        // otherwise the bar appeared twice — once on the first click and again
+        // on the second.
         //
-        // Выделение протяжкой ждать незачем: после неё двойного щелчка не
-        // бывает, и лишняя задержка была бы заметна на каждом выделении.
+        // A drag selection needs no wait: no double click follows one, and the
+        // extra delay would be noticeable on every selection.
         let dragged = mouseDownPoint.map { down in
             abs(down.x - point.x) + abs(down.y - point.y) > 4
         } ?? false
-        // 0.3 вместо системного промежутка: тот по умолчанию полсекунды,
-        // а второй щелчок на деле приходит заметно быстрее. Ожидание всего
-        // положенного было слишком заметным на каждом двойном щелчке.
+        // 0.3 instead of the system interval: that defaults to half a second,
+        // while the second click actually arrives noticeably sooner. Waiting
+        // the full interval was too obvious on every double click.
         let delay = dragged ? 0.12 : 0.3
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
@@ -243,12 +244,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 let app = NSApplication.shared
 
-// Делегат обязан жить в глобальной переменной: NSApplication держит его
-// слабой ссылкой, и внутри замыкания он был бы сразу освобождён.
+// The delegate must live in a global: NSApplication holds it weakly, and
+// inside a closure it would be released immediately.
 let delegate: AppDelegate = MainActor.assumeIsolated { AppDelegate() }
 
 MainActor.assumeIsolated {
     app.delegate = delegate
-    app.setActivationPolicy(.accessory)   // без иконки в доке
+    app.setActivationPolicy(.accessory)   // no Dock icon
     app.run()
 }

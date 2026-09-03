@@ -1,192 +1,204 @@
 # SelectBar
 
-Панель действий над выделенным текстом для macOS. Выделяете текст в любом
-приложении — рядом с курсором появляется капсула с иконками: скопировать,
-найти, перевести, произнести, открыть ссылку. Приложение живёт в строке меню,
-без окна и без иконки в доке.
+An action bar over selected text for macOS. Select text in any application and
+a capsule of icons appears next to the cursor: copy, search, translate, speak,
+open a link. The app lives in the menu bar, with no window and no Dock icon.
 
-Swift, только AppKit и SwiftUI, без сторонних зависимостей. Проверено на
+Swift, AppKit and SwiftUI only, no third-party dependencies. Tested on a
 MacBook Pro M3 Pro, macOS 26.
 
-## Панель
+## The bar
 
-Появляется по отпусканию мыши, если в этом месте есть выделенный текст.
-Набор кнопок зависит от того, что выделено, и от того, можно ли туда вводить:
+It appears on mouse release if there is selected text at that spot. Which
+buttons show depends on what is selected and on whether typing is allowed there:
 
-| Применимость | Когда показывается |
+| Applies to | When it shows |
 |---|---|
-| `Any text` | всегда, если что-то выделено |
-| `Plain text` | текст, не похожий на ссылку или адрес почты |
-| `Links only` | выделение похоже на ссылку |
-| `Emails only` | выделение похоже на адрес почты |
-| `Selected text you can edit` | выделение в поле, куда можно вводить |
-| `Editable fields` | двойной щелчок в пустое поле для ввода |
+| `Any text` | always, if something is selected |
+| `Plain text` | text that looks like neither a link nor an email address |
+| `Links only` | the selection looks like a link |
+| `Emails only` | the selection looks like an email address |
+| `Selected text you can edit` | a selection in a field that accepts typing |
+| `Editable fields` | a double click in an empty input field |
 
-Последняя строка — это кнопка вставки: она появляется на двойной щелчок в
-пустое поле и показывает начало содержимого буфера прямо в подсказке.
-Одиночный щелчок панель не вызывает — это просто установка курсора.
+The last row is the paste button: it appears on a double click in an empty field
+and shows the start of the pasteboard contents right in its tooltip. A single
+click does not summon the bar — that is just placing the caret.
 
-У действия можно задать предел длины: например озвучивание не предлагается
-для выделения длиннее 800 символов.
+An item can carry a length limit: speaking, for instance, is not offered for a
+selection longer than 800 characters.
 
-## Действия
+## Actions
 
-В наборе **57 действий**, из них включено 7. Остальные ждут во вкладке
-Actions и включаются поштучно — иначе панель разрослась бы до бесполезного
-размера.
+The set holds **57 actions**, of which 7 are enabled. The rest wait in the
+Actions tab and are switched on one at a time — otherwise the bar would grow to
+a useless size.
 
-**Встроенные.** Копировать, вырезать, вставить, открыть ссылку, написать
-письмо, поиск в Google, перевод, произнести вслух.
+**Built in.** Copy, cut, paste, open a link, write an email, search Google,
+translate, speak aloud.
 
-**Преобразования текста.** ВЕРХНИЙ и нижний регистр, Заглавные Слова,
-как в предложении, схлопнуть пробелы, убрать пробелы, сортировать строки,
-перевернуть строки, склеить строки, кавычки, комментарий, слаг, URL-кодирование,
-Base64. Все они заменяют выделенное, поэтому показываются только там, где есть
-право ввода.
+**Text transformations.** UPPERCASE and lowercase, Title Case, sentence case,
+collapse spaces, remove spaces, sort lines, reverse lines, join lines, quotes,
+comment, slug, URL encoding, Base64. All of them replace the selection, so they
+only show where typing is allowed.
 
-**Поиск и сайты.** DuckDuckGo, Wikipedia, YouTube, картинки, карты, GitHub,
+**Search and sites.** DuckDuckGo, Wikipedia, YouTube, images, maps, GitHub,
 Stack Overflow, ChatGPT, Claude, IMDb, Spotify, Amazon, Reddit, Google Scholar,
-LinkedIn, Сообщения.
+LinkedIn, Messages.
 
-**Словари.** Системный Словарь через `dict://` (пункт «Apple Dictionary»), Thesaurus, Wiktionary,
-Urban Dictionary, Cambridge.
+**Dictionaries.** The system Dictionary through `dict://` (the "Apple
+Dictionary" item), Thesaurus, Wiktionary, Urban Dictionary, Cambridge.
 
-**Переводчики.** Встроенный через настольный DeepL, а также веб-версии DeepL,
-Google, Yandex, Reverso и Bing.
+**Translators.** The built-in one through the DeepL desktop app, plus the web
+versions of DeepL, Google, Yandex, Reverso and Bing.
 
-**Заметки и задачи.** Заметки и Напоминания через `osascript`, а также Things,
-Todoist, Bear и Obsidian через их схемы адресов. Последние четыре без
-установленного приложения ничего не откроют.
+**Notes and tasks.** Notes and Reminders through `osascript`, plus Things,
+Todoist, Bear and Obsidian through their URL schemes. The last four open nothing
+without the app installed.
 
-**Сохранение ссылок.** Raindrop и Instapaper — только на ссылках.
+**Saving links.** Raindrop and Instapaper — links only.
 
-### Свои действия
+### Your own actions
 
-Кроме встроенных бывает два вида, и оба настраиваются во вкладке Actions:
+Besides the built-ins there are two kinds, both configured in the Actions tab:
 
-- **Открыть ссылку** по шаблону, где `{text}` заменяется выделенным текстом
-  с подстановкой в адрес;
-- **Выполнить команду** оболочки: `{text}` подставляется в одинарных кавычках,
-  а сам текст доступен ещё и переменной окружения `SB_TEXT` — так удобнее,
-  когда кавычки внутри мешают.
+- **Open a URL** from a template where `{text}` is replaced by the selected text,
+  percent-encoded;
+- **Run a shell command**: `{text}` is substituted inside single quotes, and the
+  text is also available in the `SB_TEXT` environment variable — handier when
+  quotes inside it would get in the way.
 
-## Внешний вид
+## Appearance
 
-Настраивается во вкладке General:
+Configured in the General tab:
 
-- **размер** — от 70% до 180%;
-- **стиль подложки** — Solid, Glass, Glass (clear), Blur;
-- **тема** — системная, светлая или тёмная, независимо от системы;
-- **оттенок** — любой цвет с настраиваемой прозрачностью.
+- **size** — from 70% to 180%;
+- **background style** — Solid, Glass, Glass (clear), Blur;
+- **theme** — system, light or dark, independent of the system;
+- **tint** — any colour with adjustable opacity.
 
-Форма всегда капсульная: радиус считается от высоты, поэтому пропорции
-сохраняются при любом масштабе. Панель ставится у курсора, а не над выделением
-— так она всегда там, где взгляд, и не прыгает по экрану вслед за длинным
-выделением.
+The shape is always a capsule: the radius is half the height, so the proportions
+hold at any scale. The bar is placed at the cursor rather than over the
+selection — that way it is always where the eye is and does not jump across the
+screen after a long selection.
 
-## Строка меню
+## Menu bar
 
-Значок можно скрыть; тогда вернуться к настройкам получится повторным запуском
-приложения из Finder.
+The icon can be hidden; getting back to settings then means relaunching the app
+from Finder.
 
-**Левый щелчок** открывает настройки прямо под значком. **Правый** — меню:
+**Left click** opens settings right under the icon. **Right click** opens the
+menu:
 
-- **Restart** — перезапуск (⌘R);
-- **Open Accessibility Settings** — появляется, только пока доступ не выдан;
+- **Restart** — relaunch (⌘R);
+- **Open Accessibility Settings** — appears only while access is not granted;
 - **Quit** (⌘Q).
 
-## Подсветка клавиатуры
+## Keyboard backlight
 
-Клавиатура мигает на **входящие уведомления** — от почты, мессенджеров, чего
-угодно.
+The keyboard blinks on **incoming notifications** — from mail, messengers,
+anything.
 
-## Настройки без окна
+## Settings without a window
 
-Две настройки не выведены в интерфейс и меняются командой:
+Two settings are not exposed in the interface and are changed by command:
 
 ```bash
-defaults write local.selectbar blinkOnNotification -bool false   # мигание на уведомления
-defaults write local.selectbar offerPaste -bool false            # кнопка вставки
+defaults write local.selectbar blinkOnNotification -bool false   # blink on notifications
+defaults write local.selectbar offerPaste -bool false            # the paste button
 ```
 
-## Устройство
+## How it works
 
-Несколько мест, где очевидное решение не работает.
+A few places where the obvious solution does not.
 
-**Выделение достаётся тремя путями подряд.** Обычного `AXSelectedText` хватает
-не везде. В приложениях с веб-представлениями — Почта, Быстрый просмотр — его
-нет, там работает `AXStringForTextMarkerRange`. Терминал же атрибут заявляет,
-но отдаёт по нему пустую строку: настоящий текст берётся по диапазону через
-`AXStringForRange`. Если не помогло ничего, идёт обход поддерева
-сфокусированного элемента, затем его окна.
+**The selection is read by three routes in turn.** Plain `AXSelectedText` is not
+enough everywhere. In applications with web views — Mail, Quick Look — it does
+not exist, and `AXStringForTextMarkerRange` does the job. Terminal advertises the
+attribute but returns an empty string for it: the real text is fetched by range
+through `AXStringForRange`. If none of that helps, the focused element's subtree
+is walked, then its window's.
 
-**Синтетического ⌘C нет намеренно**, хотя так делают многие. В Finder он
-скопировал бы выделенные файлы вместо текста. Цена отказа честная: приложения,
-не отдающие выделение через Accessibility, панель не показывают вовсе.
+**There is deliberately no synthetic ⌘C**, though many tools do exactly that. In
+Finder it would copy the selected files instead of text. The price of refusing is
+honest: applications that do not expose their selection through Accessibility
+show no bar at all.
 
-**Панель не забирает фокус** — `nonactivatingPanel` с переопределённым
-`canBecomeKey`. Иначе приложение под ней снимет выделение, и мы покажем кнопки
-для текста, которого уже нет.
+**The bar never takes focus** — a `nonactivatingPanel` with `canBecomeKey`
+overridden. Otherwise the application beneath would drop the selection and we
+would show buttons for text that no longer exists.
 
-**Стеклянный стиль устроен иначе остальных.** Капсулы групп собраны в
-`NSGlassEffectContainerView` — он сращивает близкие формы в одну текучую, как
-в системных панелях инструментов. Кнопки при этом лежат **не внутри стекла**,
-а отдельным слоем поверх: внутри него нажатия до них не доходили. Площадь
-капсулы залита слоем с непрозрачностью 0.02 — окно панели прозрачное, и без
-этого macOS пропускала бы нажатие в окно снизу везде, кроме самих штрихов
-значков. Подстройка стекла под фон отключена, иначе на светлом фоне панель
-светлела и светлые иконки на ней пропадали.
+**Chrome had to be asked twice.** It keeps Accessibility off for speed and turns
+it on when an assistive tool asks. `AXManualAccessibility` used to be that ask,
+but Chrome now rejects it — measurement returned code -25205, "attribute not
+supported", and the app stopped building its content tree entirely. The older and
+more general `AXEnhancedUserInterface`, the one VoiceOver uses, is now set
+alongside it.
 
-**Тень только у сплошной заливки.** У стекла она своя, вторая ложилась бы
-двойным контуром; у размытия тень окна обводила капсулу заметным кантом.
+**The glass style is built differently from the rest.** Group capsules live in an
+`NSGlassEffectContainerView`, which fuses nearby glass shapes into one flowing
+form the way system toolbars do. The buttons sit **not inside the glass** but as
+a layer above it: inside, clicks never reached them. The capsule's area carries a
+fill at 0.02 opacity — the panel's window is transparent, and without it macOS
+would pass clicks through to the window below everywhere except the icon strokes
+themselves. Glass adaptation to the background is switched off, or the panel
+turned pale over a light background and its light icons vanished.
 
-**Уведомления ловятся по системному журналу.** Подписка через Accessibility на
-окна процесса центра уведомлений не работает: так ловится только панель,
-открываемая щелчком по часам, а сам баннер не создаёт ни окна, ни элемента.
-Служба `usernoted` на каждое доставленное уведомление пишет строку
-`NotificationRecord app:"…"` — её и читаем через `log stream`. Осиротевшие
-процессы чтения подчищаются при запуске: при аварийном завершении обработчик
-выхода не отрабатывает и они копились бы.
+**Only the solid fill gets a shadow.** Glass casts its own and a second one lays
+a double outline over it; with blur the window shadow rimmed the capsule
+visibly.
 
-**Подсветка клавиатуры** — приватный `CoreBrightness`, подгружается
-динамически. Публичного интерфейса нет, методы выяснены перечислением через
-среду выполнения.
+**A double click no longer shows the bar twice.** Mouse-down is tracked
+alongside mouse-up: the distance between them shows whether the mouse was
+dragged or clicked in place. A drag keeps the old 0.12 s delay, a click waits
+0.3 s so the showing can be cancelled when the second click arrives.
 
-## Сборка
+**Notifications are caught through the system log.** Subscribing through
+Accessibility to windows of the notification centre process does not work: that
+only catches the panel opened by clicking the clock, while a banner creates
+neither a window nor an element. For every delivered notification the `usernoted`
+service writes a line containing `NotificationRecord app:"…"`, and that is what
+`log stream` reads. Orphaned reader processes are reaped at startup: on a crash
+the exit handler never runs and they would accumulate.
+
+**The keyboard backlight** goes through the private `CoreBrightness` framework,
+loaded dynamically. There is no public interface; the methods were found by
+enumerating them through the runtime.
+
+## Building
 
 ```bash
 ./build.sh && open /Applications/SelectBar.app
 ```
 
-Сборка идёт во временной папке вне синхронизации с облаком. Это не прихоть:
-файловый провайдер вешает на файлы атрибуты, которых `codesign` не принимает,
-и после очистки они возвращаются. Готовое приложение копируется и в папку
-проекта, и в `/Applications`.
+The bundle is staged in a temporary folder outside iCloud sync. This is not
+fussiness: the file provider stamps files with attributes `codesign` rejects, and
+they come straight back if cleaned in place. The finished app is copied both into
+the project folder and into `/Applications`.
 
-Проект Xcode генерируется из `project.yml` командой `xcodegen generate`
-и в репозиторий не входит.
+The Xcode project is generated from `project.yml` with `xcodegen generate` and is
+not part of the repository.
 
-Подпись важна не для безопасности: macOS привязывает к ней выданные
-разрешения, иначе доступ пришлось бы выдавать после каждой пересборки.
+The signature matters not for security but because macOS ties granted permissions
+to it; without one, access would have to be granted again after every rebuild.
 
-## Разрешения
+## Permissions
 
-**Универсальный доступ** обязателен — без него не читается выделение.
-Приложение ждёт его в фоне и начинает работать, как только доступ выдан.
+**Accessibility** is required — without it the selection cannot be read. The app
+waits for it in the background and starts working the moment it is granted.
 
-**Управление приложениями** система спросит сама при первом использовании
-действий «Notes» и «Reminder» — они работают через `osascript`.
+**Automation** is asked for by the system itself the first time the "Notes" and
+"Reminder" actions are used — they work through `osascript`.
 
-В песочнице приложение работать не может, поэтому дороги в Mac App Store
-у него нет.
+The app cannot run sandboxed, so there is no route to the Mac App Store for it.
 
-## Ограничения
+## Limits
 
-Панель появляется там, где приложение отдаёт выделение через Accessibility.
-Живой текст на картинках не поддерживается. Выделение ловится по отпусканию
-мыши — с клавиатуры панель не вызывается.
+The bar appears where an application exposes its selection through Accessibility.
+Live text in images is not supported. The selection is caught on mouse release —
+there is no way to summon the bar from the keyboard.
 
-Встроенный перевод через настольный DeepL опирается на двойное ⌘C и потому
-зависит от того, как копирование работает в исходном приложении: в Терминале,
-например, он не срабатывает. Веб-переводчики этого недостатка лишены, поскольку
-используют уже прочитанный текст.
+The built-in translation through the DeepL desktop app relies on a double ⌘C and
+therefore depends on how copying behaves in the source application: in Terminal,
+for one, it does not fire. The web translators do not share that flaw, since they
+use the text that has already been read.

@@ -1,7 +1,7 @@
 import AppKit
 
-/// Рисует иконку приложения во всех нужных размерах.
-/// Все координаты заданы в холсте 1024 и масштабируются множителем.
+/// Draws the application icon at every size that is needed.
+/// All coordinates are given on a 1024 canvas and scaled by a factor.
 
 func rounded(_ ctx: CGContext, _ rect: CGRect, _ radius: CGFloat) -> CGPath {
     CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
@@ -18,7 +18,7 @@ func drawIcon(size: Int) -> CGImage? {
     ctx.setShouldAntialias(true)
     ctx.interpolationQuality = .high
 
-    // Подложка-плитка со скруглением, как у системных иконок.
+    // A rounded tile behind everything, the shape system icons use.
     let tile = CGRect(x: 62 * s, y: 62 * s, width: 900 * s, height: 900 * s)
     let tilePath = rounded(ctx, tile, 200 * s)
     ctx.saveGState()
@@ -37,8 +37,8 @@ func drawIcon(size: Int) -> CGImage? {
     }
     ctx.restoreGState()
 
-    // Строки текста. Средняя — выделенная: под ней подложка выделения.
-    let lines: [(CGFloat, CGFloat, CGFloat)] = [   // x, ширина, y
+    // Lines of text. The middle one is selected: it has a highlight behind it.
+    let lines: [(CGFloat, CGFloat, CGFloat)] = [   // x, width, y
         (255, 470, 590),
         (255, 505, 455),
         (255, 360, 320),
@@ -56,7 +56,7 @@ func drawIcon(size: Int) -> CGImage? {
         ctx.fillPath()
     }
 
-    // Всплывающая панель над текстом — то, ради чего приложение и нужно.
+    // The popup bar above the text — the whole point of the app.
     let pill = CGRect(x: 300 * s, y: 690 * s, width: 424 * s, height: 132 * s)
     ctx.saveGState()
     ctx.setShadow(offset: CGSize(width: 0, height: -10 * s), blur: 26 * s,
@@ -95,4 +95,4 @@ for (name, size) in sizes {
     CGImageDestinationAddImage(dest, image, nil)
     CGImageDestinationFinalize(dest)
 }
-print("нарисовано вариантов: \(sizes.count)")
+print("variants drawn: \(sizes.count)")

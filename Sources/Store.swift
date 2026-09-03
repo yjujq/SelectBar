@@ -5,18 +5,18 @@ extension Notification.Name {
     static let statusIconVisibilityChanged = Notification.Name("SelectBarStatusIconVisibilityChanged")
 }
 
-/// Что делает пункт панели.
+/// What a bar item does.
 enum ActionKind: Codable, Hashable {
-    /// Встроенное действие, опознаётся по идентификатору.
+    /// A built-in action, identified by its id.
     case builtin(String)
-    /// Открыть ссылку. {text} заменяется выделенным текстом.
+    /// Open a URL. {text} is replaced by the selected text.
     case openURL(String)
-    /// Выполнить команду оболочки. {text} — выделенный текст,
-    /// он же доступен в переменной окружения SB_TEXT.
+    /// Run a shell command. {text} is the selected text, which is also
+    /// available in the SB_TEXT environment variable.
     case shell(String)
 }
 
-/// Когда пункт показывать.
+/// When to show an item.
 enum ActionContext: String, Codable, CaseIterable, Identifiable {
     case anyText, plainText, links, emails, emptyField, editableText
 
@@ -39,13 +39,13 @@ enum ActionContext: String, Codable, CaseIterable, Identifiable {
         case .plainText:  return !Action.looksLikeURL(text) && !Action.looksLikeEmail(text)
         case .links:      return Action.looksLikeURL(text)
         case .emails:     return Action.looksLikeEmail(text)
-        case .emptyField:   return false    // отдельный набор, не по тексту
-        case .editableText: return true     // пригодность решает признак editable
+        case .emptyField:   return false    // a separate set, not driven by the text
+        case .editableText: return true     // suitability is decided by the editable flag
         }
     }
 }
 
-/// Чем залита подложка панели.
+/// What fills the bar's background.
 enum BarStyle: String, Codable, CaseIterable, Identifiable {
     case solid, glass, glassClear, blur
     var id: String { rawValue }
@@ -59,7 +59,7 @@ enum BarStyle: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// Светлая или тёмная панель независимо от системы.
+/// A light or dark bar, independent of the system.
 enum BarAppearance: String, Codable, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
@@ -79,7 +79,7 @@ struct ActionDefinition: Codable, Identifiable, Hashable {
     var kind: ActionKind
     var context: ActionContext = .anyText
     var enabled: Bool = true
-    /// Не показывать пункт, если выделение длиннее этого. nil — без предела.
+    /// Hide the item if the selection is longer than this. nil means no limit.
     var maxTextLength: Int? = nil
 
     var isBuiltin: Bool {
@@ -88,7 +88,7 @@ struct ActionDefinition: Codable, Identifiable, Hashable {
     }
 }
 
-/// Настройки и список пунктов. Хранится в UserDefaults.
+/// Settings and the list of items. Stored in UserDefaults.
 @MainActor
 final class ActionStore: ObservableObject {
     static let shared = ActionStore()
@@ -96,15 +96,15 @@ final class ActionStore: ObservableObject {
     @Published var definitions: [ActionDefinition] = [] { didSet { save() } }
     @Published var offerPaste = true { didSet { defaults.set(offerPaste, forKey: "offerPaste") } }
 
-    /// Мигать подсветкой на приход уведомления.
+    /// Blink the backlight when a notification arrives.
     @Published var blinkOnNotification = true { didSet { defaults.set(blinkOnNotification, forKey: "blinkOnNotification") } }
 
-    /// Мигать подсветкой на каждое нажатие пробела.
+    /// Blink the backlight on every press of the space bar.
 
-    /// Показывать ли бегущей строкой то, что играет.
+    /// Whether to show what is playing as a marquee.
 
-    /// Показывать ли значок в строке меню. Выключение прячет единственный вход
-    /// в настройки, поэтому повторный запуск приложения открывает их сам.
+    /// Whether to show the menu bar icon. Turning it off hides the only way
+    /// into settings, so relaunching the app opens them by itself.
     @Published var showStatusIcon = true {
         didSet {
             defaults.set(showStatusIcon, forKey: "showStatusIcon")
@@ -112,18 +112,18 @@ final class ActionStore: ObservableObject {
         }
     }
 
-    /// Множитель размеров панели: 1.0 — как сейчас.
+    /// The bar's size multiplier; 1.0 means as-is.
     @Published var barScale: Double = 1.0 { didSet { defaults.set(barScale, forKey: "barScale") } }
     @Published var barStyle: BarStyle = .glass { didSet { defaults.set(barStyle.rawValue, forKey: "barStyle") } }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
-    /// Оттенок подложки в виде sRGB-компонент. nil — без оттенка.
+    /// The background tint as sRGB components. nil means no tint.
     @Published var barTint: [Double]? = nil { didSet { defaults.set(barTint, forKey: "barTint") } }
     @Published var launchAtLogin = false { didSet { applyLaunchAtLogin() } }
 
     private let defaults = UserDefaults.standard
     private let key = "actions.v1"
-    /// Какие пункты со ссылкой и командой уже подсаживались в список.
-    /// Нужен, чтобы удалённый пункт не возвращался при каждом запуске.
+    /// Which URL and command items have already been seeded into the list.
+    /// Needed so a deleted item does not come back on every launch.
     private let seededKey = "seededExtras.v1"
 
     private init() {
@@ -138,7 +138,7 @@ final class ActionStore: ObservableObject {
         load()
     }
 
-    // MARK: - Встроенные пункты
+    // MARK: - Built-in items
 
     static let builtinDefaults: [ActionDefinition] = [
         .init(title: "Copy",      symbol: "doc.on.doc",         kind: .builtin("copy")),
@@ -150,10 +150,11 @@ final class ActionStore: ObservableObject {
               maxTextLength: 800),
         .init(title: "Paste",     symbol: "doc.on.clipboard",   kind: .builtin("paste"), context: .emptyField),
 
-        // Ниже — по образцу расширений PopClip. Все выключены: включаются
-        // поштучно во вкладке Actions, чтобы панель не разрасталась сама.
+        // Below, modelled on PopClip's extensions. All disabled: they are
+        // turned on one at a time in the Actions tab so the bar does not grow
+        // on its own.
 
-        // Поиск и сайты. Своего кода не требуют — это подстановка в адрес.
+        // Search and sites. They need no code of their own — just URL substitution.
         .init(title: "DuckDuckGo", symbol: "magnifyingglass.circle",
               kind: .openURL("https://duckduckgo.com/?q={text}"), context: .plainText, enabled: false),
         .init(title: "Wikipedia", symbol: "book",
@@ -179,8 +180,8 @@ final class ActionStore: ObservableObject {
         .init(title: "Spotify", symbol: "music.note",
               kind: .openURL("https://open.spotify.com/search/{text}"), context: .plainText, enabled: false),
 
-        // Преобразования текста. Заменяют выделенное, поэтому только там,
-        // где есть право ввода.
+        // Text transformations. They replace the selection, so only where
+        // typing is allowed.
         .init(title: "UPPERCASE", symbol: "textformat.size.larger",
               kind: .builtin("upper"), context: .editableText, enabled: false),
         .init(title: "lowercase", symbol: "textformat.size.smaller",
@@ -194,7 +195,7 @@ final class ActionStore: ObservableObject {
         .init(title: "Join lines", symbol: "arrow.left.and.right",
               kind: .builtin("joinLines"), context: .editableText, enabled: false),
 
-        // Вторая порция.
+        // Second batch.
         .init(title: "Amazon", symbol: "cart",
               kind: .openURL("https://www.amazon.com/s?k={text}"), context: .plainText, enabled: false),
         .init(title: "Reddit", symbol: "bubble.left",
@@ -227,8 +228,8 @@ final class ActionStore: ObservableObject {
         .init(title: "Base64", symbol: "shippingbox",
               kind: .builtin("base64"), context: .editableText, enabled: false),
 
-        // --- Словари ---
-        // dict:// открывает системный Словарь без всяких посредников.
+        // --- Dictionaries ---
+        // dict:// opens the system Dictionary with no intermediary.
         .init(title: "Apple Dictionary", symbol: "character.book.closed.fill",
               kind: .openURL("dict://{text}"), context: .plainText, enabled: false),
         .init(title: "Thesaurus", symbol: "text.book.closed",
@@ -240,7 +241,7 @@ final class ActionStore: ObservableObject {
         .init(title: "Cambridge", symbol: "books.vertical",
               kind: .openURL("https://dictionary.cambridge.org/dictionary/english/{text}"), context: .plainText, enabled: false),
 
-        // --- Переводчики ---
+        // --- Translators ---
         .init(title: "DeepL (web)", symbol: "globe.europe.africa",
               kind: .openURL("https://www.deepl.com/translator#auto/ru/{text}"), context: .plainText, enabled: false),
         .init(title: "Yandex Translate", symbol: "character.bubble.fill",
@@ -250,11 +251,11 @@ final class ActionStore: ObservableObject {
         .init(title: "Bing Translator", symbol: "globe",
               kind: .openURL("https://www.bing.com/translator?text={text}"), context: .plainText, enabled: false),
 
-        // --- Заметки и задачи ---
-        // У Заметок и Напоминаний нет схемы адреса, поэтому команда.
-        // Текст идёт переменной окружения — так не нужны вложенные кавычки.
-        // При первом запуске система спросит разрешение на управление
-        // этими приложениями; до согласия действие ничего не сделает.
+        // --- Notes and tasks ---
+        // Notes and Reminders have no URL scheme, hence a command. The text
+        // travels in an environment variable, which avoids nested quoting.
+        // On first use the system asks permission to control these apps; until
+        // it is granted the action does nothing.
         .init(title: "Notes", symbol: "note.text",
               kind: .shell("osascript -e 'on run argv' -e 'tell application \"Notes\" to make new note with properties {body:(item 1 of argv)}' -e 'end run' \"$SB_TEXT\""), context: .anyText, enabled: false),
         .init(title: "Reminder", symbol: "checklist",
@@ -268,7 +269,7 @@ final class ActionStore: ObservableObject {
         .init(title: "Obsidian", symbol: "doc.text",
               kind: .openURL("obsidian://new?content={text}"), context: .anyText, enabled: false),
 
-        // --- Сохранение ссылок ---
+        // --- Saving links ---
         .init(title: "Raindrop", symbol: "drop",
               kind: .openURL("https://app.raindrop.io/add?link={text}"), context: .links, enabled: false),
         .init(title: "Instapaper", symbol: "bookmark",
@@ -281,8 +282,8 @@ final class ActionStore: ObservableObject {
             definitions = Self.builtinDefaults
             return
         }
-        // Встроенные пункты, добавленные в новой версии, дописываем в конец,
-        // не трогая порядок и настройки уже существующих.
+        // Built-in items added in a newer version are appended at the end,
+        // leaving the order and settings of existing ones untouched.
         let known = Set(stored.compactMap { def -> String? in
             if case .builtin(let id) = def.kind { return id }
             return nil
@@ -294,13 +295,13 @@ final class ActionStore: ObservableObject {
             case .builtin(let id):
                 if !known.contains(id) { stored.append(def) }
             default:
-                // У пунктов со ссылкой и командой нет устойчивого признака
-                // вроде идентификатора встроенного, поэтому опознаём по
-                // названию. Раньше эта ветка отсутствовала вовсе, и весь
-                // готовый набор — сайты, словари, задачи — в список не попадал.
+                // URL and command items have no stable identity such as a
+                // built-in id, so they are matched by title. This branch used
+                // to be missing entirely, and the whole ready-made set — sites,
+                // dictionaries, tasks — never reached the list.
                 //
-                // Два условия: не дублировать уже имеющееся и не возвращать
-                // то, что пользователь удалил.
+                // Two conditions: do not duplicate what is already there, and
+                // do not resurrect what the user deleted.
                 if !knownTitles.contains(def.title), !seeded.contains(def.title) {
                     stored.append(def)
                     seeded.insert(def.title)
@@ -339,28 +340,28 @@ final class ActionStore: ObservableObject {
                 if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
             }
         } catch {
-            NSLog("SelectBar: не удалось изменить автозапуск: \(error)")
+            NSLog("SelectBar: could not change the login item: \(error)")
         }
     }
 
-    /// Оттенок подложки как NSColor, если задан.
+    /// The background tint as an NSColor, if one is set.
     var tintColor: NSColor? {
         guard let c = barTint, c.count == 4 else { return nil }
         return NSColor(srgbRed: c[0], green: c[1], blue: c[2], alpha: c[3])
     }
 
-    // MARK: - Превращение настроек в действия панели
+    // MARK: - Turning settings into bar actions
 
     func actions(forSelectedText text: String, editable: Bool) -> [Action] {
         let clip = clipboardPreview()
         return definitions
             .filter { def in
                 guard def.enabled else { return false }
-                // Вставка уместна везде, где можно вводить: в пустом поле она
-                // просто вставит, поверх выделения — заменит его.
+                // Paste fits anywhere typing is allowed: in an empty field it
+                // simply pastes, over a selection it replaces it.
                 if def.context == .emptyField { return editable && clip != nil }
-                // Преобразования заменяют выделенное вставкой — без права
-                // ввода они бы просто ничего не сделали.
+                // Transformations replace the selection by pasting — without
+                // the right to type they would simply do nothing.
                 if def.context == .editableText { return editable && !text.isEmpty }
                 guard def.context.matches(text) else { return false }
                 if let limit = def.maxTextLength, text.count > limit { return false }
@@ -371,7 +372,7 @@ final class ActionStore: ObservableObject {
             }
     }
 
-    /// Начало содержимого буфера — для подсказки на кнопке вставки.
+    /// The start of the pasteboard contents, for the paste button's tooltip.
     private func clipboardPreview() -> String? {
         guard let clip = NSPasteboard.general.string(forType: .string) else { return nil }
         let trimmed = clip.trimmingCharacters(in: .whitespacesAndNewlines)

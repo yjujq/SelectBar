@@ -8,12 +8,12 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Свой переключатель вместо стандартного у TabView: тот жмётся
-            // к заголовку окна по центру, а нужен во всю ширину и ниже.
+            // Our own switcher instead of TabView's: that one hugs the window
+            // title in the centre, and we want full width and lower down.
             //
-            // И вместо сегментированного Picker — свой ряд кнопок: тот
-            // показывает у Label только подпись, а картинку отбрасывает,
-            // поэтому иконку рядом с текстом им не получить.
+            // And our own row of buttons instead of a segmented Picker: that
+            // one shows only the title of a Label and drops the image, so an
+            // icon next to the text is impossible with it.
             HStack(spacing: 4) {
                 TabButton(title: "General", symbol: "gearshape",
                           selected: tab == .general) { tab = .general }
@@ -35,7 +35,7 @@ struct SettingsView: View {
     }
 }
 
-/// Кнопка вкладки: иконка и подпись рядом, во всю доступную ширину.
+/// A tab button: icon and title side by side, across the available width.
 private struct TabButton: View {
     let title: String
     let symbol: String
@@ -55,7 +55,7 @@ private struct TabButton: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(selected ? Color.primary.opacity(0.12) : Color.clear)
             )
-            // Иначе нажатие ловится только по самим буквам и значку.
+            // Otherwise the click only registers on the letters and the icon.
             .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -65,8 +65,8 @@ private struct TabButton: View {
 private struct GeneralTab: View {
     @ObservedObject var store: ActionStore
 
-    /// Оттенок хранится компонентами sRGB, а SwiftUI хочет Color —
-    /// переводим в обе стороны на лету.
+    /// The tint is stored as sRGB components while SwiftUI wants a Color,
+    /// so we convert both ways on the fly.
     private var tint: Binding<Color> {
         Binding(
             get: {
@@ -127,9 +127,9 @@ private struct ActionsTab: View {
     @State private var editing: UUID?
 
     var body: some View {
-        // Правка показывается на месте списка, а не отдельной модальной
-        // панелью: та при закрытии выпадающего окна оставалась без родителя
-        // и подвешивала настройки целиком.
+        // Editing replaces the list in place rather than opening a modal
+        // sheet: that one was left without a parent when the popover closed
+        // and hung the whole settings window.
         if let id = editing, let index = store.definitions.firstIndex(where: { $0.id == id }) {
             editor(index)
         } else {
@@ -274,8 +274,8 @@ private struct ActionsTab: View {
     }
 }
 
-/// Окно настроек. Приложение живёт в строке меню, поэтому окно показываем
-/// вручную и сами выводим программу на передний план.
+/// The settings window. The app lives in the menu bar, so the window is shown
+/// by hand and we bring the process to the front ourselves.
 @MainActor
 final class SettingsWindowController {
     private var window: NSWindow?
@@ -288,9 +288,9 @@ final class SettingsWindowController {
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
 
-            // Прозрачность: размытие вместо сплошной заливки окна.
-            // Подложки внутри уже прозрачны (.scrollContentBackground(.hidden)),
-            // поэтому сквозь них видно именно это размытие, а не серый фон.
+            // Transparency: a blur instead of the window's solid fill. The
+            // backgrounds inside are already clear (.scrollContentBackground
+            // (.hidden)), so what shows through them is this blur, not grey.
             let blur = NSVisualEffectView()
             blur.material = .underWindowBackground
             blur.blendingMode = .behindWindow
