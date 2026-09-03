@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// SelectBar — панель действий над выделенным текстом.
-/// Фоновый агент без иконки в доке, живёт в строке меню.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let reader = SelectionReader()
@@ -14,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseMonitor: Any?
     private let notifications = NotificationWatcher()
     private var pendingWork: DispatchWorkItem?
+    private var mouseDownPoint: NSPoint?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyStatusIconVisibility()
@@ -163,13 +162,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Слежение за выделением
 
     private func startWatching() {
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { event in
+        // Нажатие отслеживаем наравне с отпусканием: по расстоянию между ними
+        // видно, тянули мышь или щёлкнули на месте. От этого зависит задержка.
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseUp]
+        ) { event in
             // Числа снимаем здесь: сам объект события передавать внутрь
             // изолированного замыкания нельзя.
+            let isDown = event.type == .leftMouseDown
             let clicks = event.clickCount
             let point = NSEvent.mouseLocation
             MainActor.assumeIsolated { [weak self] in
-                self?.handleMouseUp(at: point, clickCount: clicks)
+                if isDown {
+                    self?.mouseDownPoint = point
+                } else {
+                    self?.handleMouseUp(at: point, clickCount: clicks)
+                }
             }
         }
 
@@ -214,7 +222,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         pendingWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+
+        // Щелчок на месте может оказаться первым из двойного, и тогда придёт
+        // второе отпускание. Ждём положенный системе промежуток, чтобы успеть
+        // отменить показ: иначе панель появлялась дважды — на первом щелчке
+        // и снова на втором.
+        //
+        // Выделение протяжкой ждать незачем: после неё двойного щелчка не
+        // бывает, и лишняя задержка была бы заметна на каждом выделении.
+        let dragged = mouseDownPoint.map { down in
+            abs(down.x - point.x) + abs(down.y - point.y) > 4
+        } ?? false
+        // 0.3 вместо системного промежутка: тот по умолчанию полсекунды,
+        // а второй щелчок на деле приходит заметно быстрее. Ожидание всего
+        // положенного было слишком заметным на каждом двойном щелчке.
+        let delay = dragged ? 0.12 : 0.3
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 }
 

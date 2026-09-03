@@ -43,11 +43,17 @@ enum AX {
         return value
     }
 
-    /// Chromium и Electron не отдают выделение, пока им явно не включишь
-    /// поддержку Accessibility этим недокументированным атрибутом.
+    /// Включить поддержку Accessibility в приложении, которое держит её
+    /// выключенной ради быстродействия — так делают Chrome и всё на его основе.
+    ///
+    /// Признака два, и оба нужны. `AXManualAccessibility` понимали приложения
+    /// на Chromium, но Chrome его отверг: замер показал код −25205, то есть
+    /// «атрибут не поддерживается». `AXEnhancedUserInterface` старше и общее —
+    /// именно им включает поддержку VoiceOver, и его признают почти все.
     static func enableManualAccessibility(pid: pid_t) {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
     }
 }
 
