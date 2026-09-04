@@ -166,6 +166,16 @@ the exit handler never runs and they would accumulate.
 loaded dynamically. There is no public interface; the methods were found by
 enumerating them through the runtime.
 
+**A blink never starts on a dark keyboard.** The level is written with a commit,
+so it is stored as the standing preference — and a blink that ends on zero pins
+zero, leaving the light dead through every later wake. That is exactly what
+happened after sleep: waking syncs mail, the notification arrives before the
+system has restored the backlight, zero gets read as "the original" and
+faithfully written back. A reading of zero is now left alone; there is no
+telling it from a backlight the owner switched off, and both make blinking
+wrong. The restore itself sits in a `defer` rather than after the loop, since
+sleep suspends the task mid-blink and a plain trailing line simply never ran.
+
 ## Building
 
 ```bash

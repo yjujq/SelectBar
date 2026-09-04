@@ -45,10 +45,25 @@ enum Lights {
     static func blink(duration: Duration = .seconds(7),
                       interval: Duration = .milliseconds(500)) async {
         guard !busy else { return }        // a second press does not stack
-        busy = true
-        defer { busy = false }
+        guard let keyboard else { return }
 
-        let originalKeyboard = keyboard.map { $0.client.brightnessForKeyboard($0.id) }
+        let original = keyboard.client.brightnessForKeyboard(keyboard.id)
+
+        // A backlight already at zero is left alone. There is no telling
+        // "the user turned it off" from "the system has not restored it yet
+        // after waking", and both make blinking wrong: the value is written
+        // with commit, so a blink that ends on zero pins zero as the standing
+        // preference and the light stays dead through every later wake.
+        guard original > 0 else { return }
+
+        busy = true
+        // The restore belongs in a defer, not after the loop. Sleep suspends
+        // the task mid-blink, and a plain trailing line simply never ran —
+        // leaving the light off for good.
+        defer {
+            setKeyboard(original)
+            busy = false
+        }
 
         // Counted by time rather than by number of flashes: the duration is
         // given directly and will not drift if the beat changes.
@@ -60,7 +75,5 @@ enum Lights {
             setKeyboard(1)
             try? await Task.sleep(for: interval)
         } while clock.now - start < duration
-
-        if let originalKeyboard { setKeyboard(originalKeyboard) }
     }
 }
