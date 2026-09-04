@@ -99,12 +99,13 @@ menu:
 The keyboard blinks on **incoming notifications** — from mail, messengers,
 anything.
 
+The blink is switched on and off in the General tab.
+
 ## Settings without a window
 
-Two settings are not exposed in the interface and are changed by command:
+One setting is not exposed in the interface and is changed by command:
 
 ```bash
-defaults write local.selectbar blinkOnNotification -bool false   # blink on notifications
 defaults write local.selectbar offerPaste -bool false            # the paste button
 ```
 

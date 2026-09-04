@@ -99,12 +99,12 @@ private struct GeneralTab: View {
                         .frame(width: 46, alignment: .trailing)
                         .foregroundStyle(.secondary)
                 }
-                Picker("Style", selection: $store.barStyle) {
-                    ForEach(BarStyle.allCases) { Text($0.title).tag($0) }
-                }
-                Picker("Theme", selection: $store.barAppearance) {
-                    ForEach(BarAppearance.allCases) { Text($0.title).tag($0) }
-                }
+                StyledPicker(title: "Style",
+                             options: BarStyle.allCases.map { ($0, $0.title) },
+                             selection: $store.barStyle)
+                StyledPicker(title: "Theme",
+                             options: BarAppearance.allCases.map { ($0, $0.title) },
+                             selection: $store.barAppearance)
                 Toggle("Tint", isOn: useTint)
                 if store.barTint != nil {
                     ColorPicker("Tint colour", selection: tint, supportsOpacity: true)
@@ -114,6 +114,7 @@ private struct GeneralTab: View {
             Section {
                 Toggle("Launch at login", isOn: $store.launchAtLogin)
                 Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
+                Toggle("Blink the keyboard on notifications", isOn: $store.blinkOnNotification)
             }
         }
         .formStyle(.grouped)
@@ -203,18 +204,18 @@ private struct ActionsTab: View {
                 Section {
                     TextField("Title", text: $store.definitions[index].title)
                     TextField("SF Symbol", text: $store.definitions[index].symbol)
-                    Picker("Show for", selection: $store.definitions[index].context) {
-                        ForEach(ActionContext.allCases) { Text($0.title).tag($0) }
-                    }
+                    StyledPicker(title: "Show for",
+                                 options: ActionContext.allCases.map { ($0, $0.title) },
+                                 selection: $store.definitions[index].context)
                 }
                 Section("Behaviour") {
                     if store.definitions[index].isBuiltin {
                         Text("Built-in action").foregroundStyle(.secondary)
                     } else {
-                        Picker("Type", selection: kindTag(index)) {
-                            Text("Open URL").tag("url")
-                            Text("Shell command").tag("shell")
-                        }
+                        StyledPicker(title: "Type",
+                                     options: [("url", "Open URL"),
+                                               ("shell", "Shell command")],
+                                     selection: kindTag(index))
                         TextField(kindTag(index).wrappedValue == "url"
                                   ? "https://example.com/?q={text}" : "echo {text}",
                                   text: templateBinding(index))
@@ -279,39 +280,49 @@ private struct ActionsTab: View {
 @MainActor
 final class SettingsWindowController {
     private var window: NSWindow?
+    private var escapeMonitor: Any?
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(store: .shared))
-            let w = NSWindow(contentViewController: hosting)
-            w.title = "SelectBar Settings"
-            w.styleMask = [.titled, .closable, .miniaturizable]
-            w.isReleasedWhenClosed = false
+            // Borderless, so the window carries the same chrome as the panel
+            // under the icon. A title bar would put a system-drawn strip above
+            // our rounded corners and break the shape.
+            let hosting = NSHostingView(
+                rootView: AnyView(SettingsView(store: .shared).panelChrome())
+            )
+            hosting.frame = NSRect(origin: .zero, size: hosting.fittingSize)
 
-            // Transparency: a blur instead of the window's solid fill. The
-            // backgrounds inside are already clear (.scrollContentBackground
-            // (.hidden)), so what shows through them is this blur, not grey.
-            let blur = NSVisualEffectView()
-            blur.material = .underWindowBackground
-            blur.blendingMode = .behindWindow
-            blur.state = .active
-            blur.autoresizingMask = [.width, .height]
-
-            let host = hosting.view
-            host.autoresizingMask = [.width, .height]
-            host.frame = blur.bounds
-            blur.frame = host.frame
-            host.removeFromSuperview()
-            blur.addSubview(host)
-            w.contentView = blur
-
+            let w = NSWindow(
+                contentRect: hosting.frame,
+                styleMask: [.borderless],
+                backing: .buffered,
+                defer: false
+            )
+            w.contentView = hosting
             w.isOpaque = false
             w.backgroundColor = .clear
-            w.titlebarAppearsTransparent = true
+            w.hasShadow = true
+            w.isReleasedWhenClosed = false
+            // Without a title bar there is nothing to drag, so the background
+            // itself moves the window, and Escape stands in for the close box.
+            w.isMovableByWindowBackground = true
             w.center()
             window = w
+
+            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { event in
+                guard event.keyCode == 53 else { return event }   // 53 = Escape
+                MainActor.assumeIsolated { [weak self] in self?.close() }
+                return nil
+            }
         }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func close() {
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        escapeMonitor = nil
+        window?.orderOut(nil)
+        window = nil
     }
 }

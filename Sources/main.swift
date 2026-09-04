@@ -7,7 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popup = PopupController()
     private var statusItem: NSStatusItem!
     private let settingsWindow = SettingsWindowController()
-    private let popover = NSPopover()
+    private let menuPanel = FloatingPanel()
+    private let settingsPanel = FloatingPanel()
     private let store = ActionStore.shared
     private var mouseMonitor: Any?
     private let notifications = NotificationWatcher()
@@ -63,11 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        popover.contentViewController = NSHostingController(rootView: SettingsView(store: .shared))
-        popover.behavior = .transient
-        // The size is set explicitly: otherwise the popover stretches to fit
-        // its content and runs off the screen instead of scrolling.
-        popover.contentSize = NSSize(width: 300, height: 420)
 
     }
 
@@ -84,45 +80,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func togglePopover() {
+        menuPanel.hide()
         guard let button = statusItem?.button else { return }
-        if popover.isShown {
-            popover.performClose(nil)
+        if settingsPanel.isShown {
+            settingsPanel.hide()
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            // takesFocus: settings hold text fields and pickers, which take no
+            // input at all in a panel that never becomes key.
+            settingsPanel.show(SettingsView(store: .shared).panelChrome(),
+                               below: button, takesFocus: true)
         }
     }
 
     /// The menu is shown once: assign, click, remove immediately — otherwise
     /// it would stay attached to the left click too.
     private func showMenu() {
-        guard let statusItem else { return }
-        statusItem.menu = makeMenu()
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
+        guard let button = statusItem?.button else { return }
+        settingsPanel.hide()
+        menuPanel.show(
+            MenuPanelView(entries: menuEntries()) { [weak self] in self?.menuPanel.hide() },
+            below: button
+        )
     }
 
-    private func makeMenu() -> NSMenu {
-        let menu = NSMenu()
-
-        let restart = NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r")
-        restart.target = self
-        menu.addItem(restart)
-
-        menu.addItem(.separator())
+    private func menuEntries() -> [MenuEntry] {
+        var entries: [MenuEntry] = [
+            MenuEntry(title: "Restart", symbol: "arrow.clockwise", shortcut: "⌘R") {
+                [weak self] in self?.restartApp()
+            }
+        ]
 
         // While access is not granted, show the way to the settings. Once it
-        // is, the item disappears: no point reminding about what is done.
+        // is, the row disappears: no point reminding about what is done.
         if !AX.trusted(prompt: false) {
-            let access = NSMenuItem(title: "Open Accessibility Settings…",
-                                    action: #selector(openAccessibilitySettings), keyEquivalent: "")
-            access.target = self
-            menu.addItem(access)
-            menu.addItem(.separator())
+            entries.append(
+                MenuEntry(title: "Accessibility Settings…", symbol: "lock.shield") {
+                    [weak self] in self?.openAccessibilitySettings()
+                }
+            )
         }
-        let quit = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        menu.addItem(quit)
-        return menu
+
+        entries.append(
+            MenuEntry(title: "Quit", symbol: "power", shortcut: "⌘Q", isDestructive: true) {
+                NSApp.terminate(nil)
+            }
+        )
+        return entries
     }
 
     /// Restart: launch a new instance after a delay, then quit this one.
