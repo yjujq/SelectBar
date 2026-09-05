@@ -192,7 +192,16 @@ final class PopupController {
         // a future release, setValue would raise an Objective-C exception
         // that Swift cannot catch and the panel would crash on every show.
         // This way it simply keeps adapting — worse looking, still working.
-        if class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
+        //
+        // Glass (clear) is the exception and is left to adapt. It is the style
+        // meant to read like the Dock, and the Dock adapts: it lightens over a
+        // light background and darkens over a dark one. Held to a fixed tone
+        // the bar stops looking see-through and reads as a flat plate instead.
+        // The cost is the very fault that turned adaptation off in the first
+        // place — over a light background the glass goes pale, and light icons
+        // on it lose their footing.
+        if store.barStyle != .glassClear,
+           class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
             capsule.setValue(1, forKey: "_adaptiveAppearance")
         }
         capsule.translatesAutoresizingMaskIntoConstraints = false
