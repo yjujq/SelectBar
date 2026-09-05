@@ -8,11 +8,6 @@ struct Action {
     let run: (String) -> Void
     var tooltip: String? = nil
 
-    /// The semantic group index: built-ins, links, shell commands.
-    /// In the glass style each group gets its own capsule, the way Apple's
-    /// toolbars do; the other styles ignore this.
-    var group: Int = 0
-
     // MARK: - Helpers
 
     static func urlEncoded(_ text: String) -> String {

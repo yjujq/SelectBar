@@ -394,19 +394,18 @@ final class ActionStore: ObservableObject {
         case .builtin(let id):
             guard let run = Action.builtinRun(id) else { return nil }
             return Action(title: def.title, symbol: def.symbol,
-                          isRelevant: { _ in true }, run: run, tooltip: tooltip,
-                          group: 0)
+                          isRelevant: { _ in true }, run: run, tooltip: tooltip)
         case .openURL(let template):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in
                               let url = template.replacingOccurrences(
                                   of: "{text}", with: Action.urlEncoded(text))
                               Action.open(url)
-                          }, tooltip: tooltip, group: 1)
+                          }, tooltip: tooltip)
         case .shell(let command):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in Action.runShell(command, text: text) },
-                          tooltip: tooltip, group: 2)
+                          tooltip: tooltip)
         }
     }
 }

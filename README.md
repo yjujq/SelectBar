@@ -136,14 +136,19 @@ supported", and the app stopped building its content tree entirely. The older an
 more general `AXEnhancedUserInterface`, the one VoiceOver uses, is now set
 alongside it.
 
-**The glass style is built differently from the rest.** Group capsules live in an
-`NSGlassEffectContainerView`, which fuses nearby glass shapes into one flowing
-form the way system toolbars do. The buttons sit **not inside the glass** but as
-a layer above it: inside, clicks never reached them. The capsule's area carries a
-fill at 0.02 opacity — the panel's window is transparent, and without it macOS
-would pass clicks through to the window below everywhere except the icon strokes
-themselves. Glass adaptation to the background is switched off, or the panel
-turned pale over a light background and its light icons vanished.
+**The glass style is built differently from the rest.** A single capsule lives in
+an `NSGlassEffectContainerView`, which is where a glass view belongs and what
+draws the shadow and glow around it. The bar was once split by meaning —
+built-ins, links, shell commands — into a capsule apiece with a gap between
+them, left to the container to fuse. It did not read as one object: enabling an
+action of a new kind grew the bar by a separate piece rather than lengthening
+the one shape, and the split reordered the icons besides. The buttons sit **not
+inside the glass** but as a layer above it: inside, clicks never reached them.
+The capsule's area carries a fill at 0.02 opacity — the panel's window is
+transparent, and without it macOS would pass clicks through to the window below
+everywhere except the icon strokes themselves. Glass adaptation to the
+background is switched off, or the panel turned pale over a light background and
+its light icons vanished.
 
 **Only the solid fill gets a shadow.** Glass casts its own and a second one lays
 a double outline over it; with blur the window shadow rimmed the capsule

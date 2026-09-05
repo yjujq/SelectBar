@@ -121,14 +121,12 @@ final class PopupController {
         return container
     }
 
-    /// A glass bar the way Apple builds them: several capsules in one container.
+    /// A glass bar the way Apple builds them: one capsule in a container.
     ///
-    /// NSGlassEffectContainerView is the key part. It does more than hold the
-    /// capsules side by side: glass shapes close together are fused into one
-    /// flowing form and separated again at a distance. That is exactly how the
-    /// toolbars in system applications are built. Stacking glass on glass by
-    /// hand is not allowed — the layers start refracting each other and the
-    /// look falls apart.
+    /// NSGlassEffectContainerView is still the host even for a single shape —
+    /// it is where a glass view belongs, and it is what draws the shadow and
+    /// glow around it. Stacking glass on glass by hand is not allowed: the
+    /// layers start refracting each other and the look falls apart.
     ///
     /// The buttons deliberately sit NOT inside the glass but as a separate
     /// layer above it. Inside the glass, clicks never reached them. Off screen
@@ -138,94 +136,79 @@ final class PopupController {
     /// and do not depend on it.
     @available(macOS 26.0, *)
     private func buildGlassBar(actions: [Action], store: ActionStore, scale: CGFloat) -> NSView {
-        // Actions are grouped by meaning, preserving order: built-ins, links,
-        // shell commands. Each group gets its own capsule.
-        var order: [Int] = []
-        var groups: [Int: [Action]] = [:]
-        for action in actions {
-            if groups[action.group] == nil { order.append(action.group) }
-            groups[action.group, default: []].append(action)
-        }
-
-        // Apple's insets for an icon bar: noticeably wider at the sides than at the top.
-        let insets = NSEdgeInsets(top: 0, left: 2.5 * scale,
-                                  bottom: 0, right: 2.5 * scale)
-        let gap: CGFloat = 8 * scale
-
-        // The button row also sets the sizes the glass is built from.
+        // One capsule holding every action, in the order they are configured.
+        // The bar used to be split by meaning — built-ins, links, shell
+        // commands — into a capsule apiece with a gap between them, left to
+        // the container to fuse. Adding an action of a new kind then grew the
+        // bar by a separate piece instead of lengthening the one shape, and
+        // the split also reshuffled the icons out of their configured order.
+        //
+        // Apple's insets for an icon bar: noticeably wider at the sides than
+        // at the top.
         let buttons = NSStackView()
         buttons.orientation = .horizontal
-        buttons.spacing = gap
-        var groupSizes: [NSSize] = []
-        for key in order {
-            let inner = NSStackView()
-            inner.orientation = .horizontal
-            inner.spacing = 0
-            inner.edgeInsets = insets
-            for action in groups[key] ?? [] {
-                inner.addArrangedSubview(makeButton(for: action,
-                                                    width: 33 * scale, height: 32 * scale))
-            }
-            let groupSize = inner.fittingSize
-            groupSizes.append(groupSize)
-
-            // An almost transparent fill in the capsule's shape. The panel's
-            // window is transparent, and macOS passes a click through to the
-            // window below wherever the pixel in the window's buffer is empty.
-            // Glass is drawn by a separate compositor layer and writes nothing
-            // into that buffer, so without this fill the only opaque pixels are
-            // the icon strokes themselves: hit a stroke and it worked, hit a
-            // gap and it went into the text below. Hence the I-beam instead of
-            // an arrow, and clicks that worked only half the time.
-            //
-            // Blur does not need this: NSVisualEffectView fills the area
-            // itself, which is why nothing of the sort showed up in Blur.
-            inner.wantsLayer = true
-            inner.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
-            inner.layer?.cornerRadius = groupSize.height / 2
-
-            buttons.addArrangedSubview(inner)
+        buttons.spacing = 0
+        buttons.edgeInsets = NSEdgeInsets(top: 0, left: 2.5 * scale,
+                                          bottom: 0, right: 2.5 * scale)
+        for action in actions {
+            buttons.addArrangedSubview(makeButton(for: action,
+                                                  width: 33 * scale, height: 32 * scale))
         }
+        // The button row also sets the size the glass is built from.
         let size = buttons.fittingSize
 
+        // An almost transparent fill in the capsule's shape. The panel's
+        // window is transparent, and macOS passes a click through to the
+        // window below wherever the pixel in the window's buffer is empty.
+        // Glass is drawn by a separate compositor layer and writes nothing
+        // into that buffer, so without this fill the only opaque pixels are
+        // the icon strokes themselves: hit a stroke and it worked, hit a gap
+        // and it went into the text below. Hence the I-beam instead of an
+        // arrow, and clicks that worked only half the time.
+        //
+        // Blur does not need this: NSVisualEffectView fills the area itself,
+        // which is why nothing of the sort showed up in Blur.
+        buttons.wantsLayer = true
+        buttons.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
+        buttons.layer?.cornerRadius = size.height / 2
+
         // A glass backdrop of the same size, but empty inside.
+        let capsule = NSGlassEffectView()
+        // .clear only over stills and video; .regular for everything else,
+        // or the icons lose their footing and stop reading against a busy
+        // background.
+        capsule.style = store.barStyle == .glassClear ? .clear : .regular
+        capsule.tintColor = store.tintColor
+        capsule.cornerRadius = size.height / 2
+
+        // Glass adapts its appearance to whatever is beneath it: lighter
+        // over a light background, darker over a dark one. We want the
+        // appearance from settings, not from the wallpaper, so the
+        // adaptation is turned off.
+        //
+        // The property is internal: 0 is automatic, 1 off, 2 on (the
+        // default). The values were found by trying them; 3 crashes AppKit,
+        // so only 1 is used. Its presence is checked: were it to vanish in
+        // a future release, setValue would raise an Objective-C exception
+        // that Swift cannot catch and the panel would crash on every show.
+        // This way it simply keeps adapting — worse looking, still working.
+        if class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
+            capsule.setValue(1, forKey: "_adaptiveAppearance")
+        }
+        capsule.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            capsule.widthAnchor.constraint(equalToConstant: size.width),
+            capsule.heightAnchor.constraint(equalToConstant: size.height),
+        ])
+
         let row = NSStackView()
         row.orientation = .horizontal
-        row.spacing = gap
-        for groupSize in groupSizes {
-            let capsule = NSGlassEffectView()
-            // .clear only over stills and video; .regular for everything else,
-            // or the icons lose their footing and stop reading against a busy
-            // background.
-            capsule.style = store.barStyle == .glassClear ? .clear : .regular
-            capsule.tintColor = store.tintColor
-            capsule.cornerRadius = groupSize.height / 2
-
-            // Glass adapts its appearance to whatever is beneath it: lighter
-            // over a light background, darker over a dark one. We want the
-            // appearance from settings, not from the wallpaper, so the
-            // adaptation is turned off.
-            //
-            // The property is internal: 0 is automatic, 1 off, 2 on (the
-            // default). The values were found by trying them; 3 crashes AppKit,
-            // so only 1 is used. Its presence is checked: were it to vanish in
-            // a future release, setValue would raise an Objective-C exception
-            // that Swift cannot catch and the panel would crash on every show.
-            // This way it simply keeps adapting — worse looking, still working.
-            if class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
-                capsule.setValue(1, forKey: "_adaptiveAppearance")
-            }
-            capsule.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                capsule.widthAnchor.constraint(equalToConstant: groupSize.width),
-                capsule.heightAnchor.constraint(equalToConstant: groupSize.height),
-            ])
-            row.addArrangedSubview(capsule)
-        }
+        row.spacing = 0
+        row.addArrangedSubview(capsule)
 
         let container = NSGlassEffectContainerView()
-        // The fusing distance: capsules closer than this merge into one shape.
-        container.spacing = 10 * scale
+        // Nothing left to fuse: the bar is a single capsule, so the container
+        // keeps its default spacing.
         row.translatesAutoresizingMaskIntoConstraints = true
         row.frame = NSRect(origin: .zero, size: size)
         container.contentView = row
