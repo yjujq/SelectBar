@@ -142,7 +142,7 @@ final class ActionStore: ObservableObject {
 
     static let builtinDefaults: [ActionDefinition] = [
         .init(title: "Copy",      symbol: "doc.on.doc",         kind: .builtin("copy")),
-        .init(title: "Open",      symbol: "safari",             kind: .builtin("open"),   context: .links),
+        .init(title: "Open",      symbol: "link",               kind: .builtin("open"),   context: .links),
         .init(title: "Email",     symbol: "envelope",           kind: .builtin("email"),  context: .emails),
         .init(title: "Search",    symbol: "magnifyingglass",    kind: .builtin("search"),    context: .plainText),
         .init(title: "Translate", symbol: "translate",          kind: .builtin("translate"), context: .plainText),
@@ -319,12 +319,6 @@ final class ActionStore: ObservableObject {
             if def.maxTextLength == nil { stored[index].maxTextLength = fresh.maxTextLength }
         }
 
-        // A changed catalogue symbol never reaches an item already stored: the
-        // list is persisted whole, so the old glyph is what comes back. This
-        // carries one across — but only where the stored glyph is still the
-        // one the catalogue used to ship. The symbol field is editable, so an
-        // unconditional refresh would quietly overwrite a symbol the user
-        // picked. Runs once, then the flag keeps it quiet.
         // Dropping an item from the catalogue does not remove it from a list
         // already stored, so it has to be taken out by hand. Matched on the
         // address rather than the title: a renamed item would slip past a
@@ -341,14 +335,32 @@ final class ActionStore: ObservableObject {
             defaults.set(true, forKey: dropYandexKey)
         }
 
-        let claudeSymbolKey = "symbolRefresh.claude.v1"
-        if !defaults.bool(forKey: claudeSymbolKey) {
-            if let index = stored.firstIndex(where: {
-                $0.title == "Claude" && $0.symbol == "sparkles"
-            }) {
-                stored[index].symbol = "asterisk"
+        // A changed catalogue symbol does not reach a stored item either: the
+        // old glyph is what comes back. Each entry names the glyph the
+        // catalogue used to ship, so an item whose symbol the user picked
+        // themselves is left alone — the field is editable in settings, and an
+        // unconditional refresh would quietly overwrite their choice.
+        //
+        // Built-in items are matched on their stable id, the rest by title for
+        // want of one. Retiring the whole batch on a single flag is safe: an
+        // entry whose rename has already happened no longer matches its old
+        // glyph and does nothing.
+        let symbolRefreshKey = "symbolRefresh.v2"
+        if !defaults.bool(forKey: symbolRefreshKey) {
+            let renames: [(matches: (ActionDefinition) -> Bool, was: String, now: String)] = [
+                (matches: {
+                    if case .builtin(let id) = $0.kind { return id == "open" }
+                    return false
+                }, was: "safari", now: "link"),
+                (matches: { $0.title == "Claude" }, was: "sparkles", now: "asterisk"),
+            ]
+            for rename in renames {
+                guard let index = stored.firstIndex(where: {
+                    rename.matches($0) && $0.symbol == rename.was
+                }) else { continue }
+                stored[index].symbol = rename.now
             }
-            defaults.set(true, forKey: claudeSymbolKey)
+            defaults.set(true, forKey: symbolRefreshKey)
         }
 
         definitions = stored
