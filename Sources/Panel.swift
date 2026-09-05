@@ -347,12 +347,24 @@ final class PopupController {
         let config = NSImage.SymbolConfiguration(pointSize: 14 * scale, weight: .regular)
         let image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: action.title)
             ?? NSImage(systemSymbolName: "character.book.closed", accessibilityDescription: action.title)
-        if let image {
+        // A missing symbol leaves nothing to show, so the title stands in
+        // regardless of what the item asked for.
+        let showsIcon = action.label.showsIcon && image != nil
+        let showsText = action.label.showsText || !showsIcon
+
+        if showsIcon, let image {
             button.image = image.withSymbolConfiguration(config)
-            button.imagePosition = .imageOnly
-        } else {
-            button.title = action.title       // no image at all, so use the title
         }
+        if showsText {
+            // Set as an attributed string rather than a plain title: the font
+            // has to follow the bar's scale, and the colour has to be stated,
+            // since contentTintColor reaches the icon but not the text.
+            button.attributedTitle = NSAttributedString(
+                string: action.title,
+                attributes: [.font: NSFont.systemFont(ofSize: 12 * scale),
+                             .foregroundColor: NSColor.labelColor])
+        }
+        button.imagePosition = showsIcon ? (showsText ? .imageLeading : .imageOnly) : .noImage
 
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false
@@ -361,8 +373,15 @@ final class PopupController {
         button.toolTip = action.tooltip ?? action.title
         button.identifier = NSUserInterfaceItemIdentifier(action.title)
         button.translatesAutoresizingMaskIntoConstraints = false
+        // A labelled button is as wide as its content; an icon-only one keeps
+        // the width the caller asked for, so the bar's proportions hold when
+        // nothing is labelled. Measured after the title and image are set, or
+        // fittingSize would report the empty button.
+        let finalWidth = showsText
+            ? max(width, ceil(button.fittingSize.width) + 12 * scale)
+            : width
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: width),
+            button.widthAnchor.constraint(equalToConstant: finalWidth),
             button.heightAnchor.constraint(equalToConstant: height),
         ])
         return button

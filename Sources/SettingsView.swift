@@ -204,6 +204,9 @@ private struct ActionsTab: View {
                 Section {
                     TextField("Title", text: $store.definitions[index].title)
                     TextField("SF Symbol", text: $store.definitions[index].symbol)
+                    StyledPicker(title: "Show in the bar",
+                                 options: ActionLabel.allCases.map { ($0, $0.title) },
+                                 selection: $store.definitions[index].label)
                     StyledPicker(title: "Show for",
                                  options: ActionContext.allCases.map { ($0, $0.title) },
                                  selection: $store.definitions[index].context)

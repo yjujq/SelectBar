@@ -17,6 +17,24 @@ enum ActionKind: Codable, Hashable {
 }
 
 /// When to show an item.
+/// What a bar button shows: the icon, the title, or both.
+enum ActionLabel: String, Codable, CaseIterable, Identifiable {
+    case icon, iconAndText, text
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .icon:        return "Icon only"
+        case .iconAndText: return "Icon and label"
+        case .text:        return "Label only"
+        }
+    }
+
+    var showsIcon: Bool { self != .text }
+    var showsText: Bool { self != .icon }
+}
+
 enum ActionContext: String, Codable, CaseIterable, Identifiable {
     case anyText, plainText, links, emails, emptyField, editableText
 
@@ -81,10 +99,49 @@ struct ActionDefinition: Codable, Identifiable, Hashable {
     var enabled: Bool = true
     /// Hide the item if the selection is longer than this. nil means no limit.
     var maxTextLength: Int? = nil
+    /// Whether the bar shows this item's icon, its title, or both.
+    var label: ActionLabel = .icon
 
     var isBuiltin: Bool {
         if case .builtin = kind { return true }
         return false
+    }
+
+    init(id: UUID = UUID(), title: String, symbol: String, kind: ActionKind,
+         context: ActionContext = .anyText, enabled: Bool = true,
+         maxTextLength: Int? = nil, label: ActionLabel = .icon) {
+        self.id = id
+        self.title = title
+        self.symbol = symbol
+        self.kind = kind
+        self.context = context
+        self.enabled = enabled
+        self.maxTextLength = maxTextLength
+        self.label = label
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, symbol, kind, context, enabled, maxTextLength, label
+    }
+
+    /// Decoded by hand so a field added in a later version cannot make the
+    /// whole stored list undecodable.
+    ///
+    /// The synthesised decoder throws on a missing key even where the property
+    /// carries a default — measured, not assumed. And load() answers a failed
+    /// decode by falling back to the built-in set, so one new field would have
+    /// silently wiped every action the user had configured. Only the three
+    /// fields that define an item are required; the rest fall back.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        title  = try c.decode(String.self, forKey: .title)
+        symbol = try c.decode(String.self, forKey: .symbol)
+        kind   = try c.decode(ActionKind.self, forKey: .kind)
+        id            = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        context       = try c.decodeIfPresent(ActionContext.self, forKey: .context) ?? .anyText
+        enabled       = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        maxTextLength = try c.decodeIfPresent(Int.self, forKey: .maxTextLength)
+        label         = try c.decodeIfPresent(ActionLabel.self, forKey: .label) ?? .icon
     }
 }
 
@@ -437,18 +494,18 @@ final class ActionStore: ObservableObject {
         case .builtin(let id):
             guard let run = Action.builtinRun(id) else { return nil }
             return Action(title: def.title, symbol: def.symbol,
-                          isRelevant: { _ in true }, run: run, tooltip: tooltip)
+                          isRelevant: { _ in true }, run: run, tooltip: tooltip, label: def.label)
         case .openURL(let template):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in
                               let url = template.replacingOccurrences(
                                   of: "{text}", with: Action.urlEncoded(text))
                               Action.open(url)
-                          }, tooltip: tooltip)
+                          }, tooltip: tooltip, label: def.label)
         case .shell(let command):
             return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
                           run: { text in Action.runShell(command, text: text) },
-                          tooltip: tooltip)
+                          tooltip: tooltip, label: def.label)
         }
     }
 }

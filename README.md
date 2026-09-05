@@ -58,6 +58,21 @@ without the app installed.
 
 **Saving links.** Raindrop and Instapaper — links only.
 
+### Labels
+
+Each item chooses on its own what the bar shows for it: **the icon**, **the icon
+and its title**, or **the title alone**. The setting sits in the Actions tab
+beside the title and the symbol, and every item starts on the icon.
+
+It is deliberately per item rather than one switch for all. A labelled button is
+as wide as its content — "Translate" with its icon runs to about 110 pt at the
+default scale — so labelling all seven enabled items would stretch the bar past
+600 pt. Labelled one at a time, only the items whose glyph is hard to read need
+the words.
+
+An item whose symbol name is unknown shows its title whatever it asks for:
+there would otherwise be nothing to show at all.
+
 ### Your own actions
 
 Besides the built-ins there are two kinds, both configured in the Actions tab:

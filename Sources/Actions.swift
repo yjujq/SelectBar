@@ -7,6 +7,8 @@ struct Action {
     let isRelevant: (String) -> Bool
     let run: (String) -> Void
     var tooltip: String? = nil
+    /// Whether the bar shows the icon, the title, or both.
+    var label: ActionLabel = .icon
 
     // MARK: - Helpers
 
