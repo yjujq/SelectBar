@@ -153,13 +153,21 @@ struct MenuPanelView: View {
     @State private var hovered: UUID?
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             ForEach(entries) { entry in
                 row(entry)
             }
         }
-        .padding(6)
+        // Rows sit flush and run the full width, so the menu reads as one
+        // piece rather than a stack of separate tiles. Only a little air is
+        // left top and bottom; taking it sideways too would inset every
+        // highlight and bring the seams back.
+        .padding(.vertical, 5)
         .frame(width: 232)
+        // A full-width highlight would otherwise square off the top and
+        // bottom corners, which are still curving where the first and last
+        // rows sit.
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .panelChrome()
     }
 
@@ -183,14 +191,15 @@ struct MenuPanelView: View {
                         .foregroundStyle(.white.opacity(0.45))
                 }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 7)
-            .background {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.white.opacity(hovered == entry.id ? 0.14 : 0))
-            }
+            // The inset the panel's own padding used to give is carried by
+            // the row instead, so the text keeps its margin while the
+            // highlight still reaches the edges.
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(hovered == entry.id ? 0.14 : 0))
             // Without this the row only reacts on the glyphs themselves.
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 ? entry.id : (hovered == entry.id ? nil : hovered) }
@@ -257,7 +266,7 @@ struct StyledPicker<Value: Hashable>: View {
     }
 
     private var list: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 0) {
             ForEach(Array(options.enumerated()), id: \.offset) { index, option in
                 Button {
                     selection = option.value
@@ -273,20 +282,19 @@ struct StyledPicker<Value: Hashable>: View {
                             .foregroundStyle(.white.opacity(0.95))
                         Spacer(minLength: 4)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(hovered == index ? 0.14 : 0))
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.white.opacity(hovered == index ? 0.14 : 0))
                     // Without this the row only reacts on the glyphs themselves.
-                    .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .onHover { hovered = $0 ? index : (hovered == index ? nil : hovered) }
             }
         }
-        .padding(5)
+        .padding(.vertical, 4)
         .frame(width: 230)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
