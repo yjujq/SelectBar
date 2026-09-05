@@ -50,7 +50,7 @@ LinkedIn, Messages.
 Dictionary" item), Thesaurus, Wiktionary, Urban Dictionary, Cambridge.
 
 **Translators.** The built-in one through the DeepL desktop app, plus the web
-versions of DeepL, Google, Yandex, Reverso and Bing.
+versions of DeepL, Google, Reverso and Bing.
 
 **Notes and tasks.** Notes and Reminders through `osascript`, plus Things,
 Todoist, Bear and Obsidian through their URL schemes. The last four open nothing

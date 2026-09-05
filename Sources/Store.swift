@@ -171,7 +171,7 @@ final class ActionStore: ObservableObject {
               kind: .openURL("https://stackoverflow.com/search?q={text}"), context: .plainText, enabled: false),
         .init(title: "ChatGPT", symbol: "bubble.left.and.bubble.right",
               kind: .openURL("https://chatgpt.com/?q={text}"), context: .plainText, enabled: false),
-        .init(title: "Claude", symbol: "sparkles",
+        .init(title: "Claude", symbol: "asterisk",
               kind: .openURL("https://claude.ai/new?q={text}"), context: .plainText, enabled: false),
         .init(title: "Dictionary", symbol: "character.book.closed",
               kind: .openURL("https://www.merriam-webster.com/dictionary/{text}"), context: .plainText, enabled: false),
@@ -244,8 +244,6 @@ final class ActionStore: ObservableObject {
         // --- Translators ---
         .init(title: "DeepL (web)", symbol: "globe.europe.africa",
               kind: .openURL("https://www.deepl.com/translator#auto/ru/{text}"), context: .plainText, enabled: false),
-        .init(title: "Yandex Translate", symbol: "character.bubble.fill",
-              kind: .openURL("https://translate.yandex.ru/?text={text}"), context: .plainText, enabled: false),
         .init(title: "Reverso", symbol: "arrow.left.arrow.right",
               kind: .openURL("https://context.reverso.net/translation/english-russian/{text}"), context: .plainText, enabled: false),
         .init(title: "Bing Translator", symbol: "globe",
@@ -320,6 +318,39 @@ final class ActionStore: ObservableObject {
             }
             if def.maxTextLength == nil { stored[index].maxTextLength = fresh.maxTextLength }
         }
+
+        // A changed catalogue symbol never reaches an item already stored: the
+        // list is persisted whole, so the old glyph is what comes back. This
+        // carries one across — but only where the stored glyph is still the
+        // one the catalogue used to ship. The symbol field is editable, so an
+        // unconditional refresh would quietly overwrite a symbol the user
+        // picked. Runs once, then the flag keeps it quiet.
+        // Dropping an item from the catalogue does not remove it from a list
+        // already stored, so it has to be taken out by hand. Matched on the
+        // address rather than the title: a renamed item would slip past a
+        // title match. Runs once — otherwise an item the user adds back
+        // themselves would be deleted again on the next launch.
+        let dropYandexKey = "dropped.yandex.v1"
+        if !defaults.bool(forKey: dropYandexKey) {
+            stored.removeAll { def in
+                if case .openURL(let template) = def.kind {
+                    return template.lowercased().contains("yandex")
+                }
+                return false
+            }
+            defaults.set(true, forKey: dropYandexKey)
+        }
+
+        let claudeSymbolKey = "symbolRefresh.claude.v1"
+        if !defaults.bool(forKey: claudeSymbolKey) {
+            if let index = stored.firstIndex(where: {
+                $0.title == "Claude" && $0.symbol == "sparkles"
+            }) {
+                stored[index].symbol = "asterisk"
+            }
+            defaults.set(true, forKey: claudeSymbolKey)
+        }
+
         definitions = stored
     }
 
