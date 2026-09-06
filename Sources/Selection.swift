@@ -77,6 +77,11 @@ final class SelectionReader {
             $0 as! AXUIElement
         }
 
+        // A password field hands back a row of bullets rather than its text,
+        // so a bar over one would offer actions on characters that do not
+        // exist — and nothing there can be copied in any case.
+        if let focused, isSecure(focused) { return nil }
+
         // Whether typing is allowed here, which decides whether to offer
         // pasting next to the selection.
         let editable = focused.map { isEditable($0) } ?? false
@@ -157,6 +162,14 @@ final class SelectionReader {
     /// areas too — log viewers, help, parts of web pages. The code used to fall
     /// back to the role on a negative answer and offered pasting where it could
     /// not possibly work.
+    /// Whether this is a password field. The subrole is the sign; the role is
+    /// plain AXTextField, the same as any other input.
+    private func isSecure(_ element: AXUIElement) -> Bool {
+        guard let ref = AX.attribute(element, kAXSubroleAttribute as String),
+              let subrole = ref as? String else { return false }
+        return subrole == kAXSecureTextFieldSubrole as String
+    }
+
     func isEditable(_ element: AXUIElement) -> Bool {
         var settable: DarwinBoolean = false
         let status = AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
