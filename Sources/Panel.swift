@@ -1,4 +1,5 @@
 import AppKit
+
 import ObjectiveC.runtime
 
 /// A panel that never takes focus.
@@ -260,6 +261,7 @@ final class PopupController {
             outer.heightAnchor.constraint(equalToConstant: size.height + margin * 2),
         ])
         outer.appearance = appearance(for: store.barAppearance)
+
         return outer
     }
 
@@ -468,6 +470,7 @@ private final class HoverButton: NSButton {
         button.bezelStyle = .accessoryBarAction
         button.isBordered = false
         button.contentTintColor = .labelColor
+
         button.setButtonType(.momentaryChange)
         button.toolTip = action.tooltip ?? action.title
         button.identifier = NSUserInterfaceItemIdentifier(action.title)

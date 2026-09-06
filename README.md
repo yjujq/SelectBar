@@ -88,6 +88,10 @@ Besides the built-ins there are two kinds, both configured in the Actions tab:
 Configured in the General tab:
 
 - **size** — from 70% to 180%;
+- **opacity** — from 30% to 100%, for the solid and blur styles. It reaches the
+  background only: the backdrop and the buttons are siblings rather than
+  nested, so the icons keep their full strength however faint the bar behind
+  them. Glass is left out — see below;
 - **background style** — Solid, Glass, Glass (clear), Blur;
 - **theme** — system, light or dark, independent of the system;
 - **tint** — any colour with adjustable opacity.
@@ -96,6 +100,9 @@ The shape is always a capsule: the radius is half the height, so the proportions
 hold at any scale. The bar is placed at the cursor rather than over the
 selection — that way it is always where the eye is and does not jump across the
 screen after a long selection.
+
+The button under the pointer lights up, so it is plain which one a click will
+reach.
 
 ## Menu bar
 
@@ -140,6 +147,32 @@ Finder it would copy the selected files instead of text. The price of refusing i
 honest: applications that do not expose their selection through Accessibility
 show no bar at all.
 
+**The hover highlight is a full-height pill** on the button's own layer
+background, not a sublayer: a sublayer is drawn above the view's content and
+would cover the icon. Its tracking area is registered `.activeAlways`, since
+the panel never becomes key and an `.activeInKeyWindow` area would never fire.
+
+The button row is clipped to the capsule's shape. It was first reasoned that no
+clipping was needed, the pill being contained by construction — but measuring
+the live view tree showed the buttons come out taller than the bar, 45 to 49
+points against its 38, each sized by its own icon because the height constraint
+loses to the stack's fixed frame. They hang over the edges. Nothing showed
+while they were transparent; the pill is not.
+
+**Password fields get no bar.** Accessibility hands back a row of bullets for a
+secure field rather than its text, so the bar would have offered actions on
+characters that do not exist — and nothing there can be copied in any case. The
+sign is the subrole, `AXSecureTextField`; the role is a plain `AXTextField`,
+the same as any other input.
+
+That is as far as "hide the bar where copying is impossible" reaches. There is
+no Accessibility attribute meaning "this can be copied". Reading the Edit ▸ Copy
+item's enabled state is unreliable — an app's menu items are often not
+populated until the menu is opened, and many leave Copy enabled regardless. And
+it would rarely help: the bar reads the selection through Accessibility rather
+than by copying, so its actions work even where ⌘C does not. Only the built-in
+DeepL translation, which does send a double ⌘C, depends on copying.
+
 **The bar never takes focus** — a `nonactivatingPanel` with `canBecomeKey`
 overridden. Otherwise the application beneath would drop the selection and we
 would show buttons for text that no longer exists.
@@ -164,6 +197,12 @@ transparent, and without it macOS would pass clicks through to the window below
 everywhere except the icon strokes themselves. Glass adaptation to the
 background is switched off, or the panel turned pale over a light background and
 its light icons vanished.
+
+**Glass cannot be faded.** Setting any alpha below 1 on it forces the view
+through an intermediate composite, and the system then drops the effect
+altogether: the bar comes out a plain plate with no glass in it. So the opacity
+setting is disabled for both glass styles, which carry their own translucency
+through their style instead.
 
 **Only the solid fill gets a shadow.** Glass casts its own and a second one lays
 a double outline over it; with blur the window shadow rimmed the capsule
