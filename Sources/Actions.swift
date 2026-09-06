@@ -4,7 +4,6 @@ import AppKit
 struct Action {
     let title: String
     let symbol: String
-    let isRelevant: (String) -> Bool
     let run: (String) -> Void
     var tooltip: String? = nil
     /// Whether the bar shows the icon, the title, or both.

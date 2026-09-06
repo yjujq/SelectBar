@@ -1,7 +1,5 @@
 import AppKit
 
-import ObjectiveC.runtime
-
 /// A panel that never takes focus.
 ///
 /// This is essential: if the window became key, the application beneath would
@@ -28,8 +26,6 @@ final class PopupController {
     private var currentText = ""
     private var currentActions: [Action] = []
     private var dismissMonitor: Any?
-
-    var isVisible: Bool { panel?.isVisible ?? false }
 
     func show(actions: [Action], text: String, rect: NSRect?, near fallbackPoint: NSPoint) {
         hide()
@@ -196,20 +192,17 @@ final class PopupController {
         //
         // Blur does not need this: NSVisualEffectView fills the area itself,
         // which is why nothing of the sort showed up in Blur.
+        // Always a capsule: the radius is half the height.
+        let radius = size.height / 2
         buttons.wantsLayer = true
         buttons.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
-        buttons.layer?.cornerRadius = size.height / 2
+        buttons.layer?.cornerRadius = radius
         // Clipped to the capsule. The buttons come out taller than the bar —
         // measured at 45 to 49 points against its 38, each sized by its own
         // icon because the height constraint loses to the stack's fixed frame
         // — so they hang over the top and bottom edges. Nothing showed while
-        // they were transparent, but the hover pill is not, and without this
-        // it spills outside the bar. The buttons come out taller than the bar —
-        // measured at 45 to 49 points against its 38, each sized by its own
-        // icon because the height constraint loses to the stack's fixed frame
-        // — so they hang over the top and bottom edges. Nothing showed while
-        // they were transparent, but the hover pill is not, and without this
-        // it spills outside the bar.
+        // they were transparent, but the hover highlight is not, and without
+        // this it spills outside the bar.
         buttons.layer?.masksToBounds = true
 
         // A glass backdrop of the same size, but empty inside.
@@ -219,7 +212,7 @@ final class PopupController {
         // background.
         capsule.style = store.barStyle == .glassClear ? .clear : .regular
         capsule.tintColor = store.tintColor ?? automaticTint(store)
-        capsule.cornerRadius = size.height / 2
+        capsule.cornerRadius = radius
 
         // No private write here any more. Setting _adaptiveAppearance also
         // moved _variant — measured: with the write both read 1, without it
@@ -237,7 +230,8 @@ final class PopupController {
         row.spacing = 0
         row.addArrangedSubview(capsule)
 
-        let container = NSGlassEffectContainerView()
+        let container = TunedGlassContainer()
+        container.lens = store.barLens
         // No alphaValue here, however tempting. Glass is drawn by a separate
         // compositor layer that samples what lies behind the window, and any
         // alpha below 1 forces the view through an intermediate composite —
@@ -377,17 +371,16 @@ final class PopupController {
             return outer
         }
 
-        if #available(macOS 26.0, *), store.barStyle == .glass || store.barStyle == .glassClear {
-            let glass = NSGlassEffectView()
-            glass.style = store.barStyle == .glassClear ? .clear : .regular
-            glass.tintColor = store.tintColor
-            glass.cornerRadius = radius
-
-            stack.translatesAutoresizingMaskIntoConstraints = true
-            stack.frame = NSRect(origin: .zero, size: size)
-            glass.contentView = stack
-            glass.frame = NSRect(origin: .zero, size: size)
-            return glass
+        // No glass branch here. buildBar sends the two glass styles to
+        // buildGlassBar before ever reaching this, and on a system too old for
+        // NSGlassEffectView they fall through to the plain fill below — so the
+        // branch that used to sit here could not be reached either way.
+        if store.barStyle == .lens {
+            let view = LensView()
+            view.lens = store.barLens
+            view.cornerRadius = radius
+            view.wantsLayer = true
+            return fill(view)
         }
 
         if store.barStyle == .blur {

@@ -65,7 +65,7 @@ enum ActionContext: String, Codable, CaseIterable, Identifiable {
 
 /// What fills the bar's background.
 enum BarStyle: String, Codable, CaseIterable, Identifiable {
-    case solid, glass, glassClear, blur
+    case solid, glass, glassClear, blur, lens
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -73,6 +73,76 @@ enum BarStyle: String, Codable, CaseIterable, Identifiable {
         case .glass:      return "Glass"
         case .glassClear: return "Glass (clear)"
         case .blur:       return "Blur"
+        case .lens:       return "Lens"
+        }
+    }
+
+    /// Whether the style is one the system draws for us. The lens is not: it
+    /// photographs the screen and bends the picture in a shader of our own,
+    /// which is why it alone needs a permission — see LensView.
+    var needsScreenRecording: Bool { self == .lens }
+}
+
+/// How hard the glass bends what lies behind it.
+///
+/// macOS computes the refraction in the window server, and the recipe is a
+/// private CAFilter named `glassBackground` sitting on a CABackdropLayer inside
+/// every NSGlassEffectView. Nothing about it is exposed through AppKit — but
+/// the filter is parameterised, and its inputs can be read and rewritten:
+///
+///     inputInnerRefractionAmount   inputInnerRefractionHeight
+///     inputOuterRefractionAmount   inputOuterRefractionHeight
+///     inputRefractionDistance0/1   inputBlurRadius   inputFaceOpacity
+///
+/// A stock clear bar comes with amount −60 and height 20. Every case here is
+/// that dictionary with different numbers, applied once the glass has drawn
+/// itself for the first time — see GlassTuning.
+///
+/// This is private, so it is written to fail quietly: nothing found, nothing
+/// changed, and the bar keeps the system's own look.
+enum BarLens: String, Codable, CaseIterable, Identifiable {
+    case system, deep, sharp, dome, frost, flat
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .deep:   return "Deep"
+        case .sharp:  return "Sharp"
+        case .dome:   return "Dome"
+        case .frost:  return "Frost"
+        case .flat:   return "Flat"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .system: return "Exactly what macOS draws for its own bars: the background bends gently at the rim."
+        case .deep:   return "The same bend, several times stronger and spread across the whole cap. What passes under the edge is visibly pulled in."
+        case .sharp:  return "A strong bend packed into a narrow band, so the background breaks over the edge rather than curving into it."
+        case .dome:   return "Refraction on both sides of the edge — the bar reads as a thicker piece of glass sitting above the page."
+        case .frost:  return "A gentle bend behind a much heavier blur. Whatever is underneath stops being readable and becomes texture."
+        case .flat:   return "No bend at all: a plain translucent plate. Useful when the bar sits over text that must stay legible."
+        }
+    }
+
+    /// The inputs to write into `glassBackground`. Empty means "leave it be".
+    var parameters: [String: Double] {
+        switch self {
+        case .system: return [:]
+        case .deep:   return ["inputInnerRefractionAmount": -400,
+                              "inputInnerRefractionHeight": 46]
+        case .sharp:  return ["inputInnerRefractionAmount": -260,
+                              "inputInnerRefractionHeight": 10]
+        case .dome:   return ["inputInnerRefractionAmount": -200,
+                              "inputInnerRefractionHeight": 40,
+                              "inputOuterRefractionAmount": -120,
+                              "inputOuterRefractionHeight": 24]
+        case .frost:  return ["inputInnerRefractionAmount": -40,
+                              "inputInnerRefractionHeight": 12,
+                              "inputBlurRadius": 26]
+        case .flat:   return ["inputInnerRefractionAmount": 0,
+                              "inputInnerRefractionHeight": 0]
         }
     }
 }
@@ -156,10 +226,6 @@ final class ActionStore: ObservableObject {
     /// Blink the backlight when a notification arrives.
     @Published var blinkOnNotification = true { didSet { defaults.set(blinkOnNotification, forKey: "blinkOnNotification") } }
 
-    /// Blink the backlight on every press of the space bar.
-
-    /// Whether to show what is playing as a marquee.
-
     /// Whether to show the menu bar icon. Turning it off hides the only way
     /// into settings, so relaunching the app opens them by itself.
     @Published var showStatusIcon = true {
@@ -176,6 +242,7 @@ final class ActionStore: ObservableObject {
     @Published var barOpacity: Double = 0.85 { didSet { defaults.set(barOpacity, forKey: "barOpacity") } }
     @Published var barStyle: BarStyle = .glass { didSet { defaults.set(barStyle.rawValue, forKey: "barStyle") } }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
+    @Published var barLens: BarLens = .system { didSet { defaults.set(barLens.rawValue, forKey: "barLens") } }
     /// The background tint as sRGB components. nil means no tint.
     @Published var barTint: [Double]? = nil { didSet { defaults.set(barTint, forKey: "barTint") } }
     @Published var launchAtLogin = false { didSet { applyLaunchAtLogin() } }
@@ -194,6 +261,7 @@ final class ActionStore: ObservableObject {
         barOpacity = defaults.object(forKey: "barOpacity") as? Double ?? 0.85
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
+        barLens = (defaults.string(forKey: "barLens").flatMap(BarLens.init)) ?? .system
         barTint = defaults.array(forKey: "barTint") as? [Double]
         launchAtLogin = SMAppService.mainApp.status == .enabled
         load()
@@ -457,7 +525,14 @@ final class ActionStore: ObservableObject {
     // MARK: - Turning settings into bar actions
 
     func actions(forSelectedText text: String, editable: Bool) -> [Action] {
-        let clip = clipboardPreview()
+        // Read the pasteboard only if something is going to ask about it. The
+        // paste item is the only one that does, it is shown only where typing
+        // is allowed, and it is off by default — so most selections used to
+        // copy the whole pasteboard across for nothing.
+        let wantsClipboard = editable && definitions.contains {
+            $0.enabled && $0.context == .emptyField
+        }
+        let clip = wantsClipboard ? clipboardPreview() : nil
         return definitions
             .filter { def in
                 guard def.enabled else { return false }
@@ -477,12 +552,29 @@ final class ActionStore: ObservableObject {
     }
 
     /// The start of the pasteboard contents, for the paste button's tooltip.
+    ///
+    /// Cut to length before it is tidied, not after. Only the first forty
+    /// characters are ever shown, and trimming and replacing newlines across a
+    /// pasteboard holding a whole document — which is exactly what a pasteboard
+    /// often holds — built two more copies of it to throw both away.
     private func clipboardPreview() -> String? {
         guard let clip = NSPasteboard.general.string(forType: .string) else { return nil }
-        let trimmed = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // One character more than is shown, so that a pasteboard sitting
+        // exactly on the limit is not marked as continuing. Leading blanks go
+        // first, or a pasteboard beginning with a run of them would preview as
+        // empty.
+        let limit = 40
+        let head = String(clip.drop { $0.isWhitespace }.prefix(limit + 1))
+        // Decided before tidying, not after: trimming can take the string back
+        // under the limit, and the ellipsis would then go missing from a
+        // pasteboard that does carry on.
+        let continues = head.count > limit
+        let shown = head.prefix(limit)
             .replacingOccurrences(of: "\n", with: " ")
-        guard !trimmed.isEmpty else { return nil }
-        return trimmed.count > 40 ? String(trimmed.prefix(40)) + "…" : trimmed
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !shown.isEmpty else { return nil }
+        return continues ? shown + "…" : shown
     }
 
     func actionsForEmptyField() -> [Action] {
@@ -498,16 +590,16 @@ final class ActionStore: ObservableObject {
         case .builtin(let id):
             guard let run = Action.builtinRun(id) else { return nil }
             return Action(title: def.title, symbol: def.symbol,
-                          isRelevant: { _ in true }, run: run, tooltip: tooltip, label: def.label)
+                          run: run, tooltip: tooltip, label: def.label)
         case .openURL(let template):
-            return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
+            return Action(title: def.title, symbol: def.symbol,
                           run: { text in
                               let url = template.replacingOccurrences(
                                   of: "{text}", with: Action.urlEncoded(text))
                               Action.open(url)
                           }, tooltip: tooltip, label: def.label)
         case .shell(let command):
-            return Action(title: def.title, symbol: def.symbol, isRelevant: { _ in true },
+            return Action(title: def.title, symbol: def.symbol,
                           run: { text in Action.runShell(command, text: text) },
                           tooltip: tooltip, label: def.label)
         }

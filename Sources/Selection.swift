@@ -68,9 +68,20 @@ final class SelectionReader {
     /// Whether to show the paste bar when clicking an empty editable field.
     var offerPaste = true
 
+    /// Applications already asked to switch Accessibility support on.
+    ///
+    /// The request is a one-off for the life of a process, but it used to be
+    /// made on every release of the mouse button — two cross-process writes
+    /// each time, on the path that has to answer before the bar can appear.
+    /// A process identifier is not reused while its process lives, so
+    /// remembering them is enough. The set holds one entry per application
+    /// touched since launch, a handful at most.
+    private var asked: Set<pid_t> = []
+
     func read() -> Context? {
         let system = AXUIElementCreateSystemWide()
-        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+           asked.insert(pid).inserted {
             AX.enableManualAccessibility(pid: pid)
         }
         let focused = (AX.attribute(system, kAXFocusedUIElementAttribute as String)).map {
@@ -180,16 +191,6 @@ final class SelectionReader {
         guard let roleRef = AX.attribute(element, kAXRoleAttribute as String),
               let role = roleRef as? String else { return false }
         return ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
-    }
-
-    /// Whether the focused element is editable right now. Needed so a paste is
-    /// only offered where it can actually happen.
-    func focusedIsEditable() -> Bool {
-        let system = AXUIElementCreateSystemWide()
-        guard let focusedRef = AX.attribute(system, kAXFocusedUIElementAttribute as String) else {
-            return false
-        }
-        return isEditable(focusedRef as! AXUIElement)
     }
 
     /// The caret rectangle — a zero-length range has geometry too.

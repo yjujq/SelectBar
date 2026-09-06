@@ -22,7 +22,8 @@ mkdir -p "$STAGE/$APP/Contents/MacOS" "$STAGE/$APP/Contents/Resources"
 # main.swift must come last: Swift looks for the entry point there.
 swiftc -O -o "$BIN" \
     $(ls Sources/*.swift | grep -v 'main\.swift$') Sources/main.swift \
-    -framework AppKit -framework ApplicationServices
+    -framework AppKit -framework ApplicationServices \
+    -framework Metal -framework ScreenCaptureKit
 cp Info.plist "$STAGE/$APP/Contents/Info.plist"
 
 if [ -d AppIcon.iconset ]; then

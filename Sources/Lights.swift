@@ -29,8 +29,6 @@ enum Lights {
         return (client, first.uint64Value)
     }()
 
-    static var available: Bool { keyboard != nil }
-
     private static func setKeyboard(_ level: Float) {
         guard let keyboard else { return }
         // Fade speed 0 with an immediate commit: otherwise the system eases

@@ -139,10 +139,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
-    @objc private func openSettings() {
-        settingsWindow.show()
-    }
-
     @objc private func openAccessibilitySettings() {
         let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         if let url = URL(string: url) { NSWorkspace.shared.open(url) }

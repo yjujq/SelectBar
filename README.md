@@ -92,12 +92,13 @@ Configured under Appearance:
   background only: the backdrop and the buttons are siblings rather than
   nested, so the icons keep their full strength however faint the bar behind
   them. Glass is left out — see below;
-- **background style** — Solid, Glass, Glass (clear), Blur;
+- **background style** — Solid, Glass, Glass (clear), Blur, Lens;
+- **refraction**, for the glass styles — System, Deep, Sharp, Dome, Frost, Flat;
 - **theme** — system, light or dark, independent of the system;
 - **tint** — any colour with adjustable opacity.
 
-The shape is always a capsule: the radius is half the height, so the proportions
-hold at any scale. The bar is placed at the cursor rather than over the
+The shape is always a capsule: the radius is half the height, so the
+proportions hold at any scale. The bar is placed at the cursor rather than over the
 selection — that way it is always where the eye is and does not jump across the
 screen after a long selection.
 
@@ -197,6 +198,77 @@ transparent, and without it macOS would pass clicks through to the window below
 everywhere except the icon strokes themselves. Glass adaptation to the
 background is switched off, or the panel turned pale over a light background and
 its light icons vanished.
+
+**The refraction setting rewrites a private filter rather than capturing the
+screen.** How much glass bends what lies behind it is not exposed by AppKit at
+all — `NSGlassEffectView` offers a style and a corner radius. Take one apart at
+runtime and the machinery shows:
+
+    CABackdropLayer          filter: glassBackground
+      CASDFLayer             effect, gaussianRadius, smoothness, mergeElements
+        CASDFElementLayer    contentsZeroValueDistance, gradientOvalization
+    CASDFLayer               filter: vibrantColorMatrix
+    SDFPortalLayer           sourceLayer, sourceContextId
+
+`CABackdropLayer` is the layer that asks the window server for whatever sits
+behind the window — which is why the system's glass needs no permission and
+lights no indicator: the pixels never leave the compositor. The shape is a
+signed distance field, and the bend is computed from the distance to the edge.
+
+`CAFilter` turns out to publish its inputs. `filterTypes()` lists 43 named
+filters — among them `displacementMap`, `chromaticAberration`, `variableBlur`
+and `glassBackground` — and `glassBackground` takes some fifty of them:
+
+    inputInnerRefractionAmount   inputInnerRefractionHeight
+    inputOuterRefractionAmount   inputOuterRefractionHeight
+    inputRefractionDistance0/1   inputRefractionOpacity
+    inputBlurRadius              inputFaceOpacity        inputBleedAmount
+
+A stock clear bar comes with an inner amount of −60 over a height of 20. The
+settings are those numbers with different values — see `BarLens`. Deep spreads
+the bend across the whole cap at −400, Sharp packs −260 into a band of 10, Flat
+sets the amount to zero and leaves a plain translucent plate.
+
+Two details make it work. The filter does not exist until the glass has drawn
+itself once, and the system fills it in then, overwriting anything written
+earlier — so the write is deferred and repeated across the first half-second.
+And Core Animation hands the filter to the render tree when it is attached:
+mutating it in place changes nothing on screen, the layer's `filters` array has
+to be reassigned, with `disableFilterCache` set, before the new numbers are
+drawn.
+
+Both the filter's name and its input names are private and may vanish in any
+macOS release. Every step is checked before use — an input that does not read
+back is skipped — and if the shape of it ever stops matching, the bar keeps
+exactly the look the system gave it.
+
+**The Lens style is that discarded route, kept as an option.** It photographs
+the screen behind the bar through ScreenCaptureKit — one still when the bar
+appears, not a stream, since nothing moves underneath in the second or two it
+is up — and bends the picture in a Metal shader. The capsule is a signed
+distance field there too, and the bend is that field's gradient applied to the
+coordinate the picture is sampled at, falling off to nothing a band's width in.
+The Refraction setting drives both routes: the same numbers go into the private
+filter for glass and into the shader for the lens. The shader is compiled at
+runtime rather than shipped as a `.metallib` — the build is one call to
+`swiftc`, and adding a Metal step for eighty lines would be the larger change.
+
+The conversion from the filter's amounts to pixels is fitted by eye against a
+rendering of the shader, not derived: `amount` is not a distance. Two things
+came out of looking at that rendering rather than reasoning about it — a
+highlight tied to the refraction band washed out the whole capsule, the band
+being 20 points against a bar of 38; and a sixth of the amount put 133 pixels
+of displacement on a bar 38 tall. The rim is now a fixed four pixels and the
+displacement is capped just under the band.
+
+**Reading the screen was tried first and made an option rather than the default.** A Metal shader can bend
+anything, but it only ever sees its own application's content: it cannot reach
+into another app's window, and the shader route therefore needs a screenshot of
+what is behind the bar. That works — ScreenCaptureKit at 30 frames a second,
+our own app excluded from the capture — and it costs a Screen Recording
+permission and a purple indicator sitting in the menu bar the whole time the
+bar is up. Rewriting the system's own filter gives the same control over the
+bend with neither.
 
 **Glass cannot be faded.** Setting any alpha below 1 on it forces the view
 through an intermediate composite, and the system then drops the effect

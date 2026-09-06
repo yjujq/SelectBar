@@ -18,6 +18,10 @@ struct SettingsView: View {
     @ObservedObject var store: ActionStore
 
     @State private var page: SettingsPage = .root
+    /// Asked once when the page appears rather than on every redraw: the check
+    /// crosses into the window server, and this view redraws on every drag of
+    /// a slider.
+    @State private var screenRecordingGranted = true
     @State private var query = ""
     @FocusState private var searchFocused: Bool
 
@@ -47,6 +51,7 @@ struct SettingsView: View {
         }
         .frame(width: Chrome.width, height: Chrome.height)
         .background(shortcuts)
+        .onAppear { screenRecordingGranted = ScreenPhoto.permitted }
     }
 
     // MARK: - Chrome
@@ -157,6 +162,7 @@ struct SettingsView: View {
                 .padding(.top, 10)
 
             BarPreview(style: store.barStyle,
+                       lens: store.barLens,
                        appearance: store.barAppearance,
                        scale: store.barScale,
                        opacity: store.barOpacity,
@@ -189,6 +195,29 @@ struct SettingsView: View {
                 SettingRow(title: "Theme") {
                     Segmented(options: BarAppearance.allCases.map { ($0, $0.title) },
                               selection: $store.barAppearance)
+                }
+                // Refraction reaches both routes: the glass styles write the
+                // numbers into the system's own filter, the lens hands the
+                // same ones to its shader.
+                if glassStyle || store.barStyle == .lens {
+                    SettingRow(title: "Refraction") {
+                        Segmented(options: BarLens.allCases.map { ($0, $0.title) },
+                                  selection: $store.barLens)
+                    }
+                    HintText(text: store.barLens.detail)
+                }
+
+                if store.barStyle == .lens {
+                    SectionHeader(title: "Lens")
+                    HintText(text: "The bar photographs what is behind it and bends the picture in a shader of its own. Unlike the glass styles, which the window server draws, this needs Screen Recording — and macOS keeps its purple indicator lit in the menu bar while the bar is up.")
+                    if !screenRecordingGranted {
+                        SettingRow(title: "Screen Recording is not granted",
+                                   subtitle: "Without it the bar falls back to a plain fill. macOS applies the permission on the next launch.") {
+                            PillButton(title: "Grant…") {
+                                ScreenPhoto.requestPermission()
+                            }
+                        }
+                    }
                 }
 
                 SectionHeader(title: "Tint")
@@ -238,6 +267,7 @@ struct SettingsView: View {
         case .glass:      return "Glass"
         case .glassClear: return "Clear"
         case .blur:       return "Blur"
+        case .lens:       return "Lens"
         }
     }
 
@@ -286,6 +316,7 @@ private struct BarPreview: NSViewRepresentable {
     /// view would be built once and never asked to change again — the store is
     /// not part of what SwiftUI diffs.
     let style: BarStyle
+    let lens: BarLens
     let appearance: BarAppearance
     let scale: Double
     let opacity: Double
@@ -350,11 +381,11 @@ private struct BarPreview: NSViewRepresentable {
     private var sample: [Action] {
         [
             Action(title: "Copy", symbol: "doc.on.doc",
-                   isRelevant: { _ in true }, run: { _ in }),
+                   run: { _ in }),
             Action(title: "Search", symbol: "magnifyingglass",
-                   isRelevant: { _ in true }, run: { _ in }),
+                   run: { _ in }),
             Action(title: "Translate", symbol: "translate",
-                   isRelevant: { _ in true }, run: { _ in }),
+                   run: { _ in }),
         ]
     }
 }
