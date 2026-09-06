@@ -171,6 +171,9 @@ final class ActionStore: ObservableObject {
 
     /// The bar's size multiplier; 1.0 means as-is.
     @Published var barScale: Double = 1.0 { didSet { defaults.set(barScale, forKey: "barScale") } }
+    /// How solid the bar's background is. The icons are unaffected: the
+    /// backdrop and the buttons are siblings, not nested.
+    @Published var barOpacity: Double = 0.85 { didSet { defaults.set(barOpacity, forKey: "barOpacity") } }
     @Published var barStyle: BarStyle = .glass { didSet { defaults.set(barStyle.rawValue, forKey: "barStyle") } }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
     /// The background tint as sRGB components. nil means no tint.
@@ -188,6 +191,7 @@ final class ActionStore: ObservableObject {
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
         blinkOnNotification = defaults.object(forKey: "blinkOnNotification") as? Bool ?? true
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
+        barOpacity = defaults.object(forKey: "barOpacity") as? Double ?? 0.85
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
         barTint = defaults.array(forKey: "barTint") as? [Double]

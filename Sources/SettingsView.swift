@@ -99,6 +99,23 @@ private struct GeneralTab: View {
                         .frame(width: 46, alignment: .trailing)
                         .foregroundStyle(.secondary)
                 }
+                // Glass is left out: fading it switches the effect off
+                // entirely, so the control would be worse than useless there.
+                let glassStyle = store.barStyle == .glass || store.barStyle == .glassClear
+                HStack {
+                    Text("Opacity")
+                    Slider(value: $store.barOpacity, in: 0.3...1, step: 0.05)
+                    Text("\(Int(store.barOpacity * 100))%")
+                        .monospacedDigit()
+                        .frame(width: 46, alignment: .trailing)
+                        .foregroundStyle(.secondary)
+                }
+                .disabled(glassStyle)
+                if glassStyle {
+                    Text("Glass carries its own translucency; fading it would switch the effect off.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 StyledPicker(title: "Style",
                              options: BarStyle.allCases.map { ($0, $0.title) },
                              selection: $store.barStyle)

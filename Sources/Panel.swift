@@ -210,6 +210,13 @@ final class PopupController {
         row.addArrangedSubview(capsule)
 
         let container = NSGlassEffectContainerView()
+        // No alphaValue here, however tempting. Glass is drawn by a separate
+        // compositor layer that samples what lies behind the window, and any
+        // alpha below 1 forces the view through an intermediate composite —
+        // whereupon the system drops the effect altogether and the bar comes
+        // out as a plain plate with no glass in it at all. The opacity setting
+        // therefore reaches the solid and blur styles only; glass carries its
+        // own translucency, chosen by its style.
         // Nothing left to fuse: the bar is a single capsule, so the container
         // keeps its default spacing.
         row.translatesAutoresizingMaskIntoConstraints = true
@@ -312,17 +319,33 @@ final class PopupController {
 
     private func makeBackground(store: ActionStore, size: NSSize,
                                 radius: CGFloat, stack: NSStackView) -> NSView {
-        func fill(_ view: NSView) -> NSView {
-            view.addSubview(stack)
-            stack.translatesAutoresizingMaskIntoConstraints = false
+        // The backdrop and the buttons are siblings rather than nested, the
+        // way the glass bar already builds them. Nested, the opacity setting
+        // would fade the icons along with the background; apart, it reaches
+        // the background alone.
+        func fill(_ backdrop: NSView) -> NSView {
+            backdrop.frame = NSRect(origin: .zero, size: size)
+            backdrop.alphaValue = store.barOpacity
+
+            let outer = NSView(frame: NSRect(origin: .zero, size: size))
+            outer.addSubview(backdrop)
+            stack.translatesAutoresizingMaskIntoConstraints = true
+            stack.frame = NSRect(origin: .zero, size: size)
+            // Clipped for the same reason as the glass bar: the buttons run
+            // taller than the capsule, and the hover pill would spill.
+            stack.wantsLayer = true
+            stack.layer?.cornerRadius = radius
+            stack.layer?.masksToBounds = true
+            outer.addSubview(stack)
+
+            // Explicit sizes: fittingSize of a wrapper holding nothing pinned
+            // is zero, and the panel's window would collapse.
+            outer.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                stack.topAnchor.constraint(equalTo: view.topAnchor),
-                stack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                outer.widthAnchor.constraint(equalToConstant: size.width),
+                outer.heightAnchor.constraint(equalToConstant: size.height),
             ])
-            view.frame = NSRect(origin: .zero, size: size)
-            return view
+            return outer
         }
 
         if #available(macOS 26.0, *), store.barStyle == .glass || store.barStyle == .glassClear {
