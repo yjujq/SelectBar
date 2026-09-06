@@ -178,32 +178,14 @@ final class PopupController {
         // or the icons lose their footing and stop reading against a busy
         // background.
         capsule.style = store.barStyle == .glassClear ? .clear : .regular
-        capsule.tintColor = store.tintColor
+        capsule.tintColor = store.tintColor ?? automaticTint(store)
         capsule.cornerRadius = size.height / 2
 
-        // Glass adapts its appearance to whatever is beneath it: lighter
-        // over a light background, darker over a dark one. We want the
-        // appearance from settings, not from the wallpaper, so the
-        // adaptation is turned off.
-        //
-        // The property is internal: 0 is automatic, 1 off, 2 on (the
-        // default). The values were found by trying them; 3 crashes AppKit,
-        // so only 1 is used. Its presence is checked: were it to vanish in
-        // a future release, setValue would raise an Objective-C exception
-        // that Swift cannot catch and the panel would crash on every show.
-        // This way it simply keeps adapting — worse looking, still working.
-        //
-        // Glass (clear) is the exception and is left to adapt. It is the style
-        // meant to read like the Dock, and the Dock adapts: it lightens over a
-        // light background and darkens over a dark one. Held to a fixed tone
-        // the bar stops looking see-through and reads as a flat plate instead.
-        // The cost is the very fault that turned adaptation off in the first
-        // place — over a light background the glass goes pale, and light icons
-        // on it lose their footing.
-        if store.barStyle != .glassClear,
-           class_getProperty(NSGlassEffectView.self, "_adaptiveAppearance") != nil {
-            capsule.setValue(1, forKey: "_adaptiveAppearance")
-        }
+        // No private write here any more. Setting _adaptiveAppearance also
+        // moved _variant — measured: with the write both read 1, without it
+        // both read 2 — so what looked like "hold the appearance still" was in
+        // fact selecting a different glass variant, and the bar came out with
+        // no glass in it at all. The appearance is left to the system.
         capsule.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             capsule.widthAnchor.constraint(equalToConstant: size.width),
@@ -239,6 +221,14 @@ final class PopupController {
         container.translatesAutoresizingMaskIntoConstraints = true
         container.frame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
         outer.addSubview(container)
+        // The buttons stay OUTSIDE the glass, against Apple's documented
+        // arrangement. Content belongs in a contentView and content inside
+        // adapts along with the glass — which is exactly what these icons
+        // fail to do. It was tried again once the bar became a single capsule,
+        // on the chance that the old fault belonged to the old structure of a
+        // capsule per group. It does not: inside the glass, clicks still never
+        // reach the buttons. The live glass layer swallows them, and its
+        // behaviour is beyond our reach.
         buttons.translatesAutoresizingMaskIntoConstraints = true
         buttons.frame = container.frame
         outer.addSubview(buttons)
@@ -262,16 +252,37 @@ final class PopupController {
         }
     }
 
+    /// Whether the bar is drawing dark, by the setting or by the system.
+    private func isDark(_ store: ActionStore) -> Bool {
+        switch store.barAppearance {
+        case .light: return false
+        case .dark:  return true
+        case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        }
+    }
+
+    /// A tint that keeps the glass on the same side as its icons.
+    ///
+    /// Glass takes its tone from whatever lies behind the window, while the
+    /// icons take theirs from the theme, and the two answer to different
+    /// masters: over a white background the glass whitened, and white icons in
+    /// dark mode disappeared into it entirely.
+    ///
+    /// Asking the glass what it had become is not possible — measured: its
+    /// effectiveAppearance reads the same over a white background as over a
+    /// black one, so the adaptation happens somewhere we cannot see. Instead
+    /// the glass is leaned back towards the theme, faintly enough to stay
+    /// glass. A tint the user set themselves wins over this.
+    private func automaticTint(_ store: ActionStore) -> NSColor {
+        isDark(store) ? NSColor(white: 0, alpha: 0.25)
+                      : NSColor(white: 1, alpha: 0.25)
+    }
+
     /// A solid background colour, dark or light, with the tint mixed in.
     /// Unlike glass it does not depend on what lies beneath the panel.
     private func solidColor(store: ActionStore) -> NSColor {
-        let dark: Bool
-        switch store.barAppearance {
-        case .light: dark = false
-        case .dark:  dark = true
-        case .system:
-            dark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        }
+        let dark = isDark(store)
         var base = dark ? NSColor(white: 0.14, alpha: 0.97)
                         : NSColor(white: 0.97, alpha: 0.97)
 
