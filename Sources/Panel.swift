@@ -85,6 +85,21 @@ final class PopupController {
 
     // MARK: - Building the bar
 
+    /// The bar as a loose view, for the preview in settings.
+    ///
+    /// It goes through the very code that builds the real thing rather than an
+    /// imitation of it: a preview drawn a second way would drift from the bar
+    /// the first time either is touched, and a preview that lies is worse than
+    /// none.
+    ///
+    /// Its buttons still target this controller, and they are harmless. Their
+    /// action looks the pressed title up in `currentActions`, which only `show`
+    /// ever fills — a controller kept solely for previewing has none, so the
+    /// lookup finds nothing and the press does nothing.
+    func previewBar(actions: [Action]) -> NSView {
+        buildBar(actions: actions)
+    }
+
     private func buildBar(actions: [Action]) -> NSView {
         let store = ActionStore.shared
         let scale = store.barScale
@@ -101,11 +116,18 @@ final class PopupController {
         let stack = NSStackView()
         stack.orientation = .horizontal
         stack.spacing = 0
-        stack.edgeInsets = NSEdgeInsets(top: 0, left: 2.5 * scale,
-                                        bottom: 0, right: 2.5 * scale)
-        for action in actions {
-            stack.addArrangedSubview(makeButton(for: action,
-                                                width: 31 * scale, height: 30 * scale))
+        // The side inset is carried by the outermost buttons rather than by
+        // the stack — see endPadding. The bar comes out the same size either
+        // way; the difference is that the hover highlight at either end now
+        // reaches the capsule's own edge.
+        for (index, action) in actions.enumerated() {
+            stack.addArrangedSubview(
+                makeButton(for: action,
+                           width: 31 * scale + Self.endPadding(at: index,
+                                                               of: actions.count,
+                                                               inset: 2.5 * scale),
+                           height: 30 * scale,
+                           corners: Self.capsuleCorners(at: index, of: actions.count)))
         }
 
         let size = stack.fittingSize
@@ -149,11 +171,16 @@ final class PopupController {
         let buttons = NSStackView()
         buttons.orientation = .horizontal
         buttons.spacing = 0
-        buttons.edgeInsets = NSEdgeInsets(top: 0, left: 2.5 * scale,
-                                          bottom: 0, right: 2.5 * scale)
-        for action in actions {
-            buttons.addArrangedSubview(makeButton(for: action,
-                                                  width: 33 * scale, height: 32 * scale))
+        // The side inset is carried by the outermost buttons rather than by
+        // the stack — see endPadding.
+        for (index, action) in actions.enumerated() {
+            buttons.addArrangedSubview(
+                makeButton(for: action,
+                           width: 33 * scale + Self.endPadding(at: index,
+                                                               of: actions.count,
+                                                               inset: 2.5 * scale),
+                           height: 32 * scale,
+                           corners: Self.capsuleCorners(at: index, of: actions.count)))
         }
         // The button row also sets the size the glass is built from.
         let size = buttons.fittingSize
@@ -388,11 +415,36 @@ final class PopupController {
 /// sublayer is drawn above the view's own content and would cover the icon,
 /// while the background sits beneath it.
 ///
-/// It is a full-height pill, and it needs no clipping to stay inside the
-/// capsule. The button rows are inset from the capsule's ends by the stack's
-/// own edge insets, so the pill's rounded cap — the same radius as the
-/// capsule's — is simply shifted inwards from it.
+/// The shape is cut by a mask rather than by the layer's own corner radius,
+/// and that is the whole trick. A button is not the size of the slot it sits
+/// in: measured, they come out 45 to 49 points tall against a bar of 38, each
+/// sized by its own icon, centred so they overhang top and bottom, and the
+/// stack clips the overhang away. Every radius set on the layer was therefore
+/// computed against a height half as tall again as the one on screen. Half of
+/// it drew a disc floating in the middle of the bar; a smaller fraction only
+/// shrank the disc, since the rounding still fell inside the visible band —
+/// and by a different amount on each button, no two being the same height.
+/// Dropping the radius altogether left a hard-cornered block.
+///
+/// The mask is given the slot instead: the bar's height, which the builder
+/// knows and hands over, and the full width between one icon's neighbours,
+/// because that is the area the click answers to. The icon sits well inside
+/// and is untouched by the mask.
+///
+/// The fill is square, save at the two ends of the row. A button in the middle
+/// has neighbours on both sides and any rounding there would open a gap
+/// between one highlight and the next; the outermost pair instead take the
+/// capsule's own radius on their outer side, so the highlight follows the
+/// shape of the bar where the bar has a shape.
 private final class HoverButton: NSButton {
+    /// The bar's height, which is not this button's — see above. Zero until
+    /// the builder sets it, in which case the mask falls back to the bounds.
+    var slotHeight: CGFloat = 0
+
+    /// Which corners follow the capsule. Empty for every button but the two
+    /// at the ends; all four when the bar holds a single action.
+    var capsuleCorners: CACornerMask = []
+
     private var area: NSTrackingArea?
     private var hovered = false { didSet { applyHighlight() } }
 
@@ -414,8 +466,28 @@ private final class HoverButton: NSButton {
 
     override func layout() {
         super.layout()
-        layer?.cornerRadius = bounds.height / 2
+        applyMask()
         applyHighlight()
+    }
+
+    /// Confines whatever the layer draws to the slot this button occupies in
+    /// the bar, with the corners rounded against that height.
+    private func applyMask() {
+        wantsLayer = true
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        let height = slotHeight > 0 ? min(slotHeight, bounds.height) : bounds.height
+        let shape = CALayer()
+        shape.frame = CGRect(x: 0, y: (bounds.height - height) / 2,
+                             width: bounds.width, height: height)
+        // Half the height is the capsule's own radius — the bar is cut to
+        // exactly that. Only the corners named get it; the rest stay square.
+        shape.cornerRadius = capsuleCorners.isEmpty ? 0 : height / 2
+        shape.maskedCorners = capsuleCorners
+        // A mask works on the alpha it carries, so it needs to be opaque
+        // wherever it should let the layer through. The colour is immaterial.
+        shape.backgroundColor = NSColor.black.cgColor
+        layer?.mask = shape
     }
 
     private func applyHighlight() {
@@ -438,9 +510,51 @@ private final class HoverButton: NSButton {
     /// The sizes come from the caller: a button must fill the capsule entirely
     /// so clicks register beyond the icon itself. The icon inside keeps its
     /// point size and simply sits centred — nothing changes to the eye.
+    /// Which corners of the button at `index` follow the bar's capsule: the
+    /// outer pair at each end of the row, none in between. Both pairs when the
+    /// row holds one button, since then it is both ends at once.
+    ///
+    /// Named by side rather than by corner, so it holds whichever way round
+    /// the layer's vertical axis runs.
+    /// The width the button at `index` gains from the bar's side inset.
+    ///
+    /// The inset used to sit on the stack, which held the whole row of buttons
+    /// clear of the capsule's ends. The hover highlight cannot leave its own
+    /// button, so at either end it stopped short of the bar's edge: its rounded
+    /// cap sat inside the capsule's, and a sliver of bar showed between the two
+    /// curves. Given to the outermost buttons instead, as extra width, the row
+    /// spans the capsule end to end — the bar measures the same, and the two
+    /// curves now coincide, both being half the height.
+    ///
+    /// One button takes it at both ends, being both the first and the last.
+    private static func endPadding(at index: Int, of count: Int,
+                                   inset: CGFloat) -> CGFloat {
+        var extra: CGFloat = 0
+        if index == 0 { extra += inset }
+        if index == count - 1 { extra += inset }
+        return extra
+    }
+
+    private static func capsuleCorners(at index: Int, of count: Int) -> CACornerMask {
+        var mask: CACornerMask = []
+        if index == 0 {
+            mask.formUnion([.layerMinXMinYCorner, .layerMinXMaxYCorner])
+        }
+        if index == count - 1 {
+            mask.formUnion([.layerMaxXMinYCorner, .layerMaxXMaxYCorner])
+        }
+        return mask
+    }
+
     private func makeButton(for action: Action,
-                            width: CGFloat, height: CGFloat) -> NSButton {
+                            width: CGFloat, height: CGFloat,
+                            corners: CACornerMask) -> NSButton {
         let button = HoverButton(title: "", target: self, action: #selector(perform(_:)))
+        // The height asked for here is the bar's, and the button will not end
+        // up wearing it — see HoverButton. It is handed over so the highlight
+        // can be cut to the slot rather than to the button.
+        button.slotHeight = height
+        button.capsuleCorners = corners
 
         // Some symbols only exist in recent SF Symbols releases — if the name
         // is unknown, fall back so the button is not left blank.

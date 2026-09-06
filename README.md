@@ -31,7 +31,7 @@ selection longer than 800 characters.
 ## Actions
 
 The set holds **57 actions**, of which 7 are enabled. The rest wait in the
-Actions tab and are switched on one at a time — otherwise the bar would grow to
+Actions page and are switched on one at a time — otherwise the bar would grow to
 a useless size.
 
 **Built in.** Copy, cut, paste, open a link, write an email, search Google,
@@ -61,7 +61,7 @@ without the app installed.
 ### Labels
 
 Each item chooses on its own what the bar shows for it: **the icon**, **the icon
-and its title**, or **the title alone**. The setting sits in the Actions tab
+and its title**, or **the title alone**. The setting sits on each item’s page under Actions
 beside the title and the symbol, and every item starts on the icon.
 
 It is deliberately per item rather than one switch for all. A labelled button is
@@ -75,7 +75,7 @@ there would otherwise be nothing to show at all.
 
 ### Your own actions
 
-Besides the built-ins there are two kinds, both configured in the Actions tab:
+Besides the built-ins there are two kinds, both configured on the Actions page:
 
 - **Open a URL** from a template where `{text}` is replaced by the selected text,
   percent-encoded;
@@ -85,7 +85,7 @@ Besides the built-ins there are two kinds, both configured in the Actions tab:
 
 ## Appearance
 
-Configured in the General tab:
+Configured under Appearance:
 
 - **size** — from 70% to 180%;
 - **opacity** — from 30% to 100%, for the solid and blur styles. It reaches the
@@ -121,7 +121,7 @@ menu:
 The keyboard blinks on **incoming notifications** — from mail, messengers,
 anything.
 
-The blink is switched on and off in the General tab.
+The blink is switched on and off under Behaviour.
 
 ## Settings without a window
 

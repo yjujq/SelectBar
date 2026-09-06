@@ -1,69 +1,245 @@
 import SwiftUI
 
+/// Where in the settings we are.
+///
+/// Tabs used to sit at the top and switch between two flat pages. A path with
+/// a root replaces them: the editor for a single action was already a third
+/// level pretending to be part of the second, and the breadcrumb says out loud
+/// what the back button could only imply.
+enum SettingsPage: Hashable {
+    case root
+    case appearance
+    case behaviour
+    case actions
+    case editor(UUID)
+}
+
 struct SettingsView: View {
     @ObservedObject var store: ActionStore
-    @State private var tab: Tab = .general
 
-    private enum Tab: Hashable { case general, actions }
+    @State private var page: SettingsPage = .root
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            // Our own switcher instead of TabView's: that one hugs the window
-            // title in the centre, and we want full width and lower down.
-            //
-            // And our own row of buttons instead of a segmented Picker: that
-            // one shows only the title of a Label and drops the image, so an
-            // icon next to the text is impossible with it.
-            HStack(spacing: 4) {
-                TabButton(title: "General", symbol: "gearshape",
-                          selected: tab == .general) { tab = .general }
-                TabButton(title: "Actions", symbol: "list.bullet",
-                          selected: tab == .actions) { tab = .actions }
+            CrumbBar(crumbs: crumbs) { index in
+                // Only the root is ever a target: the path is never deeper
+                // than three, and the middle crumb of the editor is the list
+                // it was opened from.
+                page = index == 0 ? .root : .actions
+                query = ""
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 8)
+            Hairline()
 
-            Divider()
+            // The search field is the only thing this row ever holds, and it
+            // belongs to the Actions list alone — four dozen rows deep and the
+            // one page where finding something takes work. Everywhere else the
+            // row would be empty, so it is not drawn at all.
+            if page == .actions {
+                SearchRow(text: $query, placeholder: "Search actions",
+                          focused: $searchFocused) { EmptyView() }
+                Hairline()
+            }
 
-            switch tab {
-            case .general: GeneralTab(store: store)
-            case .actions: ActionsTab(store: store)
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .frame(width: Chrome.width, height: Chrome.height)
+        .background(shortcuts)
+    }
+
+    // MARK: - Chrome
+
+    private var crumbs: [String] {
+        switch page {
+        case .root:       return ["Settings"]
+        case .appearance: return ["Settings", "Appearance"]
+        case .behaviour:  return ["Settings", "Behaviour"]
+        case .actions:    return ["Settings", "Actions"]
+        case .editor(let id):
+            let title = store.definitions.first { $0.id == id }?.title ?? "Item"
+            return ["Settings", "Actions", title.isEmpty ? "Untitled" : title]
+        }
+    }
+
+    /// The shortcuts are not advertised anywhere in the panel — ⌘F for the
+    /// search field, ⌘[ back a level, Escape to close, the last one caught by
+    /// the panel's own monitor. They still work; they are parked behind the
+    /// panel where they cannot be seen. A Button is the only way to bind a key
+    /// without a menu.
+    private var shortcuts: some View {
+        ZStack {
+            Button("") {
+                if page == .actions {
+                    searchFocused = true
+                } else {
+                    // The only search there is belongs to the Actions list, so
+                    // the key goes there rather than doing nothing. The field
+                    // does not exist until that page has been built, and focus
+                    // set in the same turn of the run loop lands on nothing.
+                    page = .actions
+                    DispatchQueue.main.async { searchFocused = true }
+                }
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            Button("") {
+                if case .editor = page { page = .actions } else { page = .root }
+                query = ""
+            }
+            .keyboardShortcut("[", modifiers: .command)
+        }
+        // Invisible, but not zero-sized and not .hidden(): a view taken out of
+        // the layout stops answering its shortcut. Sitting in a background it
+        // costs the panel no space either way.
+        .opacity(0)
+    }
+
+    // MARK: - Pages
+
+    @ViewBuilder
+    private var content: some View {
+        switch page {
+        case .root:       rootPage
+        case .appearance: appearancePage
+        case .behaviour:  behaviourPage
+        case .actions:    ActionsPage(store: store, query: query, page: $page)
+        case .editor(let id):
+            if let index = store.definitions.firstIndex(where: { $0.id == id }) {
+                EditorPage(store: store, index: index, page: $page)
+            } else {
+                // The item was deleted from under us.
+                Color.clear.onAppear { page = .actions }
             }
         }
-        .frame(width: 300, height: 420)
     }
-}
 
-/// A tab button: icon and title side by side, across the available width.
-private struct TabButton: View {
-    let title: String
-    let symbol: String
-    let selected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                Text(title)
+    private var rootPage: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                NavRow(title: "Appearance",
+                       subtitle: "Size, style, theme and tint",
+                       symbol: "paintbrush") { page = .appearance }
+                NavRow(title: "Behaviour",
+                       subtitle: "Login, menu bar icon, keyboard blink",
+                       symbol: "switch.2") { page = .behaviour }
+                NavRow(title: "Actions",
+                       subtitle: "What the bar offers, and in what order",
+                       symbol: "list.bullet",
+                       badge: "\(store.definitions.filter(\.enabled).count)/\(store.definitions.count)") {
+                    page = .actions
+                }
             }
-            .font(.system(size: 11, weight: selected ? .semibold : .regular))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(selected ? Color.primary.opacity(0.12) : Color.clear)
-            )
-            // Otherwise the click only registers on the letters and the icon.
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .padding(.vertical, 8)
         }
-        .buttonStyle(.plain)
+        .scrollIndicators(.hidden)
     }
-}
 
-private struct GeneralTab: View {
-    @ObservedObject var store: ActionStore
+    private var appearancePage: some View {
+        VStack(spacing: 0) {
+            appearanceControls
+            Hairline()
+            // Pinned below the controls rather than left as the last section
+            // of the scroll: every setting above it changes what it shows, and
+            // a preview you have to scroll to is a preview you miss.
+            preview
+        }
+    }
+
+    /// The bar as these settings will draw it.
+    private var preview: some View {
+        VStack(spacing: 0) {
+            Text("Preview")
+                .font(.system(size: 12))
+                .foregroundStyle(Chrome.dim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Chrome.gutter)
+                .padding(.top, 10)
+
+            BarPreview(style: store.barStyle,
+                       appearance: store.barAppearance,
+                       scale: store.barScale,
+                       opacity: store.barOpacity,
+                       tint: store.barTint)
+                .frame(maxWidth: .infinity)
+                // Fixed, so the strip does not resize under the pointer while
+                // the size slider is being dragged. Tall enough for the bar at
+                // its largest.
+                .frame(height: 78)
+        }
+        .background(Chrome.band)
+    }
+
+    private var appearanceControls: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                SectionHeader(title: "Bar appearance")
+
+                SliderRow(title: "Size", value: $store.barScale, in: 0.7...1.8)
+                SliderRow(title: "Opacity", value: $store.barOpacity, in: 0.3...1,
+                          enabled: !glassStyle)
+                if glassStyle {
+                    HintText(text: "Glass carries its own translucency; fading it would switch the effect off.")
+                }
+
+                SettingRow(title: "Style") {
+                    Segmented(options: BarStyle.allCases.map { ($0, shortTitle($0)) },
+                              selection: $store.barStyle)
+                }
+                SettingRow(title: "Theme") {
+                    Segmented(options: BarAppearance.allCases.map { ($0, $0.title) },
+                              selection: $store.barAppearance)
+                }
+
+                SectionHeader(title: "Tint")
+                SettingRow(title: "Tint the background", toggle: useTint)
+                if store.barTint != nil {
+                    SettingRow(title: "Colour") {
+                        ColorPicker("", selection: tint, supportsOpacity: true)
+                            .labelsHidden()
+                    }
+                }
+            }
+            .padding(.bottom, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var behaviourPage: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                SectionHeader(title: "System")
+                SettingRow(title: "Launch at login", toggle: $store.launchAtLogin)
+                SettingRow(title: "Show icon in the menu bar",
+                           subtitle: "Hidden, the only way back is to launch the app again.",
+                           toggle: $store.showStatusIcon)
+
+                SectionHeader(title: "Keyboard")
+                SettingRow(title: "Blink on notifications",
+                           subtitle: "Flashes the backlight when a banner arrives.",
+                           toggle: $store.blinkOnNotification)
+            }
+            .padding(.bottom, 12)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    // MARK: - Bindings
+
+    private var glassStyle: Bool {
+        store.barStyle == .glass || store.barStyle == .glassClear
+    }
+
+    /// The catalogue titles are spelled out for the Actions list; a segmented
+    /// control has no room for "Glass (clear)".
+    private func shortTitle(_ style: BarStyle) -> String {
+        switch style {
+        case .solid:      return "Solid"
+        case .glass:      return "Glass"
+        case .glassClear: return "Clear"
+        case .blur:       return "Blur"
+        }
+    }
 
     /// The tint is stored as sRGB components while SwiftUI wants a Color,
     /// so we convert both ways on the fly.
@@ -87,196 +263,324 @@ private struct GeneralTab: View {
             set: { on in store.barTint = on ? [0.0, 0.48, 1.0, 0.35] : nil }
         )
     }
+}
 
-    var body: some View {
-        Form {
-            Section("Bar appearance") {
-                HStack {
-                    Text("Size")
-                    Slider(value: $store.barScale, in: 0.7...1.8, step: 0.05)
-                    Text("\(Int(store.barScale * 100))%")
-                        .monospacedDigit()
-                        .frame(width: 46, alignment: .trailing)
-                        .foregroundStyle(.secondary)
-                }
-                // Glass is left out: fading it switches the effect off
-                // entirely, so the control would be worse than useless there.
-                let glassStyle = store.barStyle == .glass || store.barStyle == .glassClear
-                HStack {
-                    Text("Opacity")
-                    Slider(value: $store.barOpacity, in: 0.3...1, step: 0.05)
-                    Text("\(Int(store.barOpacity * 100))%")
-                        .monospacedDigit()
-                        .frame(width: 46, alignment: .trailing)
-                        .foregroundStyle(.secondary)
-                }
-                .disabled(glassStyle)
-                if glassStyle {
-                    Text("Glass carries its own translucency; fading it would switch the effect off.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                StyledPicker(title: "Style",
-                             options: BarStyle.allCases.map { ($0, $0.title) },
-                             selection: $store.barStyle)
-                StyledPicker(title: "Theme",
-                             options: BarAppearance.allCases.map { ($0, $0.title) },
-                             selection: $store.barAppearance)
-                Toggle("Tint", isOn: useTint)
-                if store.barTint != nil {
-                    ColorPicker("Tint colour", selection: tint, supportsOpacity: true)
-                }
-            }
+// MARK: - The bar, as these settings will draw it
 
-            Section {
-                Toggle("Launch at login", isOn: $store.launchAtLogin)
-                Toggle("Show icon in the menu bar", isOn: $store.showStatusIcon)
-                Toggle("Blink the keyboard on notifications", isOn: $store.blinkOnNotification)
-            }
+/// The live bar, embedded in the settings panel.
+///
+/// It is built by the very code that builds the real one — see
+/// `PopupController.previewBar`. An imitation drawn a second way would drift
+/// from the bar the first time either was touched.
+@MainActor
+private struct BarPreview: NSViewRepresentable {
+    // Stated rather than inferred: the builder is main-actor isolated, and
+    // without the annotation above the conformance is not satisfied at all,
+    // whereupon this type can no longer be worked out either.
+    typealias NSViewType = NSView
+
+    /// Every setting the bar is drawn from, taken by value.
+    ///
+    /// The builder reads the store itself, so these are not what it draws
+    /// from; they are here so SwiftUI has something to compare. Left out, the
+    /// view would be built once and never asked to change again — the store is
+    /// not part of what SwiftUI diffs.
+    let style: BarStyle
+    let appearance: BarAppearance
+    let scale: Double
+    let opacity: Double
+    let tint: [Double]?
+
+    @MainActor
+    final class Coordinator {
+        /// Never shown. It exists to build views and to be the target of
+        /// buttons that must do nothing.
+        let builder = PopupController()
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // The context type is spelled out rather than written as `Context`. That
+    // shorthand is the protocol's, but the app has an enum of its own by that
+    // name — what is under the cursor, in Selection.swift — and being a
+    // top-level type it wins. The methods then took the wrong type, satisfied
+    // nothing, and the conformance failed with the two signatures printed
+    // side by side looking identical.
+    func makeNSView(context: NSViewRepresentableContext<BarPreview>) -> NSView {
+        let host = NSView()
+        rebuild(host, with: context.coordinator)
+        return host
+    }
+
+    func updateNSView(_ host: NSView, context: NSViewRepresentableContext<BarPreview>) {
+        rebuild(host, with: context.coordinator)
+    }
+
+    private func rebuild(_ host: NSView, with coordinator: Coordinator) {
+        host.subviews.forEach { $0.removeFromSuperview() }
+
+        let bar = coordinator.builder.previewBar(actions: sample)
+
+        // With the theme set to System the builder leaves the appearance
+        // unset, so the view takes it from whatever it is placed in. The real
+        // bar is placed in a window of its own and inherits the application's;
+        // here it would inherit the settings panel's, which is forced dark —
+        // and a light system would preview as dark. So it is stated outright.
+        if appearance == .system {
+            bar.appearance = NSApp.effectiveAppearance
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .frame(maxHeight: .infinity)
+
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(bar)
+        NSLayoutConstraint.activate([
+            bar.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+            bar.centerYAnchor.constraint(equalTo: host.centerYAnchor),
+        ])
+    }
+
+    /// A fixed trio rather than whatever happens to be enabled.
+    ///
+    /// The preview is about the style, and a bar that changed width every time
+    /// an action was switched on elsewhere would jump about for no reason the
+    /// eye could follow. Icons only for the same reason: a label can run to any
+    /// length, and this strip has a fixed width to sit in.
+    ///
+    /// A computed property rather than a static one: an Action carries
+    /// closures, so a stored global of them would not be concurrency-safe.
+    private var sample: [Action] {
+        [
+            Action(title: "Copy", symbol: "doc.on.doc",
+                   isRelevant: { _ in true }, run: { _ in }),
+            Action(title: "Search", symbol: "magnifyingglass",
+                   isRelevant: { _ in true }, run: { _ in }),
+            Action(title: "Translate", symbol: "translate",
+                   isRelevant: { _ in true }, run: { _ in }),
+        ]
     }
 }
 
-private struct ActionsTab: View {
+/// A symbol that is missing from this system's catalogue would leave a blank
+/// row, so it is swapped for a visible placeholder.
+func symbolOrFallback(_ name: String) -> String {
+    NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
+        ? name : "questionmark.square.dashed"
+}
+
+// MARK: - The list of actions
+
+private struct ActionsPage: View {
     @ObservedObject var store: ActionStore
-    @State private var editing: UUID?
+    let query: String
+    @Binding var page: SettingsPage
 
     var body: some View {
-        // Editing replaces the list in place rather than opening a modal
-        // sheet: that one was left without a parent when the popover closed
-        // and hung the whole settings window.
-        if let id = editing, let index = store.definitions.firstIndex(where: { $0.id == id }) {
-            editor(index)
-        } else {
-            list
-        }
-    }
-
-    private var list: some View {
         VStack(spacing: 0) {
-            List {
-                ForEach($store.definitions) { $def in
-                    HStack(spacing: 6) {
-                        Toggle("", isOn: $def.enabled)
-                            .labelsHidden()
-                            .controlSize(.small)
-                        Image(systemName: symbolOrFallback(def.symbol))
-                            .frame(width: 16)
-                        Text(def.title.isEmpty ? "Untitled" : def.title)
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        Button {
-                            editing = def.id
-                        } label: {
-                            Image(systemName: "slider.horizontal.3")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+            if query.isEmpty {
+                // Only the unfiltered list can be reordered: onMove hands back
+                // offsets into what is on screen, and against a filtered list
+                // they point at the wrong items.
+                List {
+                    ForEach($store.definitions) { $def in
+                        row($def)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                    .onMove { from, to in
+                        store.definitions.move(fromOffsets: from, toOffset: to)
                     }
                 }
-                .onMove { from, to in
-                    store.definitions.move(fromOffsets: from, toOffset: to)
-                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 34)
+            } else {
+                filtered
             }
-            .scrollContentBackground(.hidden)
-            Divider()
-            HStack(spacing: 6) {
-                Button { addAction() } label: { Image(systemName: "plus") }
-                    .help("Add a custom item")
+
+            Hairline()
+            HStack(spacing: 8) {
+                PillButton(title: "Add item", symbol: "plus") { addAction() }
                 Spacer()
-                Button("Reset") { store.resetToDefaults() }
+                PillButton(title: "Reset all") { store.resetToDefaults() }
             }
-            .controlSize(.small)
-            .padding(6)
+            .padding(.horizontal, Chrome.gutter)
+            .padding(.vertical, 8)
         }
     }
 
-    private func editor(_ index: Int) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    editing = nil
-                } label: {
-                    Label("Actions", systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                Spacer()
-                if !store.definitions[index].isBuiltin {
-                    Button("Delete", role: .destructive) {
-                        store.definitions.remove(at: index)
-                        editing = nil
-                    }
-                }
-            }
-            .controlSize(.small)
-            .padding(8)
-
-            Divider()
-
-            Form {
-                Section {
-                    TextField("Title", text: $store.definitions[index].title)
-                    TextField("SF Symbol", text: $store.definitions[index].symbol)
-                    StyledPicker(title: "Show in the bar",
-                                 options: ActionLabel.allCases.map { ($0, $0.title) },
-                                 selection: $store.definitions[index].label)
-                    StyledPicker(title: "Show for",
-                                 options: ActionContext.allCases.map { ($0, $0.title) },
-                                 selection: $store.definitions[index].context)
-                }
-                Section("Behaviour") {
-                    if store.definitions[index].isBuiltin {
-                        Text("Built-in action").foregroundStyle(.secondary)
-                    } else {
-                        StyledPicker(title: "Type",
-                                     options: [("url", "Open URL"),
-                                               ("shell", "Shell command")],
-                                     selection: kindTag(index))
-                        TextField(kindTag(index).wrappedValue == "url"
-                                  ? "https://example.com/?q={text}" : "echo {text}",
-                                  text: templateBinding(index))
-                        Text(kindTag(index).wrappedValue == "url"
-                             ? "{text} is replaced with the selection, URL-encoded."
-                             : "{text} is quoted for the shell; SB_TEXT holds the raw selection.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
+    private var filtered: some View {
+        let needle = query.lowercased()
+        let indices = store.definitions.indices.filter {
+            store.definitions[$0].title.lowercased().contains(needle)
         }
+        return ScrollView {
+            VStack(spacing: 0) {
+                if indices.isEmpty {
+                    Text("No action matches “\(query)”.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Chrome.faint)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Chrome.gutter)
+                        .padding(.top, 18)
+                } else {
+                    ForEach(indices, id: \.self) { index in
+                        row($store.definitions[index])
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .scrollIndicators(.hidden)
     }
 
-    private func symbolOrFallback(_ name: String) -> String {
-        NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
-            ? name : "questionmark.square.dashed"
+    private func row(_ def: Binding<ActionDefinition>) -> some View {
+        ActionRow(def: def) { page = .editor(def.wrappedValue.id) }
     }
 
     private func addAction() {
         let new = ActionDefinition(title: "New item", symbol: "star",
                                    kind: .openURL("https://example.com/?q={text}"))
         store.definitions.append(new)
-        editing = new.id
+        page = .editor(new.id)
+    }
+}
+
+/// One line of the action list: the switch, the icon, the title, and the way in.
+private struct ActionRow: View {
+    @Binding var def: ActionDefinition
+    let edit: () -> Void
+
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Toggle("", isOn: $def.enabled)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(Color.white.opacity(0.34))
+            Image(systemName: symbolOrFallback(def.symbol))
+                .font(.system(size: 12))
+                .foregroundStyle(def.enabled ? Chrome.text : Chrome.faint)
+                .frame(width: 18)
+            Text(def.title.isEmpty ? "Untitled" : def.title)
+                .font(.system(size: 13))
+                .foregroundStyle(def.enabled ? Chrome.text : Chrome.dim)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(def.context.shortTitle)
+                .font(.system(size: 11))
+                .foregroundStyle(Chrome.faint)
+                .lineLimit(1)
+            Button(action: edit) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Chrome.faint)
+                    .frame(width: 18, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, Chrome.gutter)
+        .padding(.vertical, 6)
+        .background(hovered ? Chrome.hover : Color.clear)
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+    }
+}
+
+extension ActionContext {
+    /// The full titles read as sentences, which is right in a picker and far
+    /// too long at the end of a list row.
+    var shortTitle: String {
+        switch self {
+        case .anyText:      return "Any"
+        case .plainText:    return "Plain"
+        case .links:        return "Links"
+        case .emails:       return "Email"
+        case .emptyField:   return "Field"
+        case .editableText: return "Editable"
+        }
+    }
+}
+
+// MARK: - Editing one action
+
+private struct EditorPage: View {
+    @ObservedObject var store: ActionStore
+    let index: Int
+    @Binding var page: SettingsPage
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                SectionHeader(title: "Item")
+                FieldRow(title: "Title", text: $store.definitions[index].title,
+                         placeholder: "Untitled")
+                FieldRow(title: "Symbol", text: $store.definitions[index].symbol,
+                         placeholder: "star")
+
+                SettingRow(title: "Shows") {
+                    Segmented(options: [(ActionLabel.icon, "Icon"),
+                                        (.iconAndText, "Both"),
+                                        (.text, "Label")],
+                              selection: $store.definitions[index].label)
+                }
+                StyledPicker(title: "Show for",
+                             options: ActionContext.allCases.map { ($0, $0.title) },
+                             selection: $store.definitions[index].context)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Chrome.text)
+                    .padding(.horizontal, Chrome.gutter)
+                    .padding(.vertical, 7)
+
+                SectionHeader(title: "Behaviour")
+                if store.definitions[index].isBuiltin {
+                    HintText(text: "A built-in action. Its title, symbol and the places it appears can be changed; what it does cannot.")
+                } else {
+                    SettingRow(title: "Type") {
+                        Segmented(options: [("url", "Open URL"), ("shell", "Shell")],
+                                  selection: kindTag)
+                    }
+                    FieldRow(title: "Template", text: templateBinding,
+                             placeholder: kindTag.wrappedValue == "url"
+                                 ? "https://example.com/?q={text}" : "echo {text}")
+                    HintText(text: kindTag.wrappedValue == "url"
+                             ? "{text} is replaced with the selection, URL-encoded."
+                             : "{text} is quoted for the shell; SB_TEXT holds the raw selection.")
+
+                    HStack {
+                        Spacer()
+                        PillButton(title: "Delete item", symbol: "trash",
+                                   isDestructive: true) {
+                            store.definitions.remove(at: index)
+                            page = .actions
+                        }
+                    }
+                    .padding(.horizontal, Chrome.gutter)
+                    .padding(.top, 10)
+                }
+            }
+            .padding(.bottom, 14)
+        }
+        .scrollIndicators(.hidden)
     }
 
-    private func kindTag(_ index: Int) -> Binding<String> {
+    private var kindTag: Binding<String> {
         Binding(
             get: {
                 if case .shell = store.definitions[index].kind { return "shell" }
                 return "url"
             },
             set: { newValue in
-                let current = templateBinding(index).wrappedValue
-                store.definitions[index].kind = newValue == "shell" ? .shell(current) : .openURL(current)
+                let current = templateBinding.wrappedValue
+                store.definitions[index].kind =
+                    newValue == "shell" ? .shell(current) : .openURL(current)
             }
         )
     }
 
-    private func templateBinding(_ index: Int) -> Binding<String> {
+    private var templateBinding: Binding<String> {
         Binding(
             get: {
                 switch store.definitions[index].kind {
@@ -294,6 +598,8 @@ private struct ActionsTab: View {
         )
     }
 }
+
+// MARK: - The window
 
 /// The settings window. The app lives in the menu bar, so the window is shown
 /// by hand and we bring the process to the front ourselves.
