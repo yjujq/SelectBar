@@ -171,6 +171,18 @@ final class PopupController {
         buttons.wantsLayer = true
         buttons.layer?.backgroundColor = NSColor(white: 0, alpha: 0.02).cgColor
         buttons.layer?.cornerRadius = size.height / 2
+        // Clipped to the capsule. The buttons come out taller than the bar —
+        // measured at 45 to 49 points against its 38, each sized by its own
+        // icon because the height constraint loses to the stack's fixed frame
+        // — so they hang over the top and bottom edges. Nothing showed while
+        // they were transparent, but the hover pill is not, and without this
+        // it spills outside the bar. The buttons come out taller than the bar —
+        // measured at 45 to 49 points against its 38, each sized by its own
+        // icon because the height constraint loses to the stack's fixed frame
+        // — so they hang over the top and bottom edges. Nothing showed while
+        // they were transparent, but the hover pill is not, and without this
+        // it spills outside the bar.
+        buttons.layer?.masksToBounds = true
 
         // A glass backdrop of the same size, but empty inside.
         let capsule = NSGlassEffectView()
@@ -345,12 +357,65 @@ final class PopupController {
         return fill(plain)
     }
 
+/// A bar button that lights up under the pointer.
+///
+/// The highlight goes on the layer's background rather than in a sublayer: a
+/// sublayer is drawn above the view's own content and would cover the icon,
+/// while the background sits beneath it.
+///
+/// It is a full-height pill, and it needs no clipping to stay inside the
+/// capsule. The button rows are inset from the capsule's ends by the stack's
+/// own edge insets, so the pill's rounded cap — the same radius as the
+/// capsule's — is simply shifted inwards from it.
+private final class HoverButton: NSButton {
+    private var area: NSTrackingArea?
+    private var hovered = false { didSet { applyHighlight() } }
+
+    /// Registered as .activeAlways on purpose. The bar's panel never becomes
+    /// key — it must not, or the application beneath would drop its selection
+    /// — and an .activeInKeyWindow area would therefore never fire.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let area { removeTrackingArea(area) }
+        let fresh = NSTrackingArea(rect: .zero,
+                                   options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                   owner: self, userInfo: nil)
+        addTrackingArea(fresh)
+        area = fresh
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
+    override func layout() {
+        super.layout()
+        layer?.cornerRadius = bounds.height / 2
+        applyHighlight()
+    }
+
+    private func applyHighlight() {
+        wantsLayer = true
+        guard hovered else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            return
+        }
+        // labelColor is dynamic, so it has to be resolved against the view's
+        // own appearance — the bar carries the appearance from settings, which
+        // need not be the system's.
+        var colour = NSColor.clear.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            colour = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        }
+        layer?.backgroundColor = colour
+    }
+}
+
     /// The sizes come from the caller: a button must fill the capsule entirely
     /// so clicks register beyond the icon itself. The icon inside keeps its
     /// point size and simply sits centred — nothing changes to the eye.
     private func makeButton(for action: Action,
                             width: CGFloat, height: CGFloat) -> NSButton {
-        let button = NSButton(title: "", target: self, action: #selector(perform(_:)))
+        let button = HoverButton(title: "", target: self, action: #selector(perform(_:)))
 
         // Some symbols only exist in recent SF Symbols releases — if the name
         // is unknown, fall back so the button is not left blank.
