@@ -27,6 +27,11 @@ final class PopupController {
     private var currentActions: [Action] = []
     private var dismissMonitor: Any?
 
+    /// What was behind the bar the last time it was measured, for the Auto
+    /// theme. Kept between showings: it is the starting guess for the next
+    /// one, and a guess from a moment ago beats none at all.
+    private var behindIsDark: Bool?
+
     func show(actions: [Action], text: String, rect: NSRect?, near fallbackPoint: NSPoint) {
         hide()
         guard !actions.isEmpty else { return }
@@ -57,10 +62,26 @@ final class PopupController {
         // borderWidth is 0 throughout its layer tree.
         panel.hasShadow = ActionStore.shared.barStyle == .solid
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.appearance = appearance(for: ActionStore.shared.barAppearance)
+        panel.appearance = appearance(for: ActionStore.shared)
         panel.contentView = content
         panel.orderFrontRegardless()
         self.panel = panel
+
+        // Auto has to look at the screen, and looking is not instant. The bar
+        // is drawn at once with the last reading — or the system's setting on
+        // the very first showing — and put right a moment later if the reading
+        // that comes back disagrees. Rebuilding is what a showing does anyway.
+        if ActionStore.shared.barAppearance == .auto {
+            let frame = NSRect(origin: origin, size: size)
+            Task { [weak self] in
+                guard let tone = await ScreenPhoto.tone(of: frame) else { return }
+                guard let self, self.behindIsDark != tone else { return }
+                self.behindIsDark = tone
+                guard let panel = self.panel else { return }
+                panel.appearance = self.appearance(for: ActionStore.shared)
+                panel.contentView = self.buildBar(actions: actions)
+            }
+        }
 
         // Dismiss on any click or key press outside the panel.
         dismissMonitor = NSEvent.addGlobalMonitorForEvents(
@@ -136,7 +157,7 @@ final class PopupController {
         // The appearance is set on the backing view, not only on the window:
         // otherwise the icon colours come from the system theme and read wrong
         // against our own fill.
-        container.appearance = appearance(for: store.barAppearance)
+        container.appearance = appearance(for: store)
         return container
     }
 
@@ -245,7 +266,7 @@ final class PopupController {
         row.frame = NSRect(origin: .zero, size: size)
         container.contentView = row
         container.frame = NSRect(origin: .zero, size: size)
-        container.appearance = appearance(for: store.barAppearance)
+        container.appearance = appearance(for: store)
 
         // The wrapper: glass below, buttons above. Their geometry matches
         // exactly because both are built from the same insets and gaps.
@@ -281,25 +302,38 @@ final class PopupController {
             outer.widthAnchor.constraint(equalToConstant: size.width + margin * 2),
             outer.heightAnchor.constraint(equalToConstant: size.height + margin * 2),
         ])
-        outer.appearance = appearance(for: store.barAppearance)
+        outer.appearance = appearance(for: store)
 
         return outer
     }
 
-    private func appearance(for setting: BarAppearance) -> NSAppearance? {
-        switch setting {
+    private func appearance(for store: ActionStore) -> NSAppearance? {
+        switch store.barAppearance {
         case .system: return nil
         case .light:  return NSAppearance(named: .aqua)
         case .dark:   return NSAppearance(named: .darkAqua)
+        // Auto has to name one: leaving it to the system would be System.
+        case .auto:   return NSAppearance(named: isDark(store) ? .darkAqua : .aqua)
         }
     }
 
-    /// Whether the bar is drawing dark, by the setting or by the system.
+    /// Whether the bar is drawing dark, by the setting, the system, or what it
+    /// happens to be sitting on.
     private func isDark(_ store: ActionStore) -> Bool {
         switch store.barAppearance {
         case .light: return false
         case .dark:  return true
         case .system:
+            return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        case .auto:
+            // The same side as what is behind it: a dark bar over a dark page,
+            // a light one over a light page. The bar then belongs to what it
+            // is covering rather than standing against it, and its icons —
+            // which take their colour from the theme — are light on the dark
+            // one and dark on the light one, so they read either way. The
+            // system's own setting stands in until the first measurement comes
+            // back, and whenever the screen cannot be read at all.
+            if let behindIsDark { return behindIsDark }
             return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         }
     }

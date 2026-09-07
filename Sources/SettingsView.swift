@@ -196,26 +196,42 @@ struct SettingsView: View {
                     Segmented(options: BarAppearance.allCases.map { ($0, $0.title) },
                               selection: $store.barAppearance)
                 }
+                if store.barAppearance == .auto {
+                    HintText(text: "The bar reads what it is about to cover and takes the same side: dark over a dark page, light over a light one. It needs Screen Recording for that, and falls back to the system's setting without it.")
+                }
                 // Refraction reaches both routes: the glass styles write the
                 // numbers into the system's own filter, the lens hands the
                 // same ones to its shader.
                 if glassStyle || store.barStyle == .lens {
-                    SettingRow(title: "Refraction") {
-                        Segmented(options: BarLens.allCases.map { ($0, $0.title) },
-                                  selection: $store.barLens)
-                    }
+                    // A dropdown rather than a segmented control: there are
+                    // eleven of these now, and a row of eleven would be
+                    // unreadable long before it stopped fitting.
+                    StyledPicker(title: "Refraction",
+                                 options: BarLens.allCases.map { ($0, $0.title) },
+                                 selection: $store.barLens)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Chrome.text)
+                        .padding(.horizontal, Chrome.gutter)
+                        .padding(.vertical, 7)
                     HintText(text: store.barLens.detail)
+                    if store.barStyle != .lens, store.barLens.shape != .edge {
+                        HintText(text: "Only the Lens style draws this shape. The glass styles are drawn by the system, whose own refraction has no notion of it, and take the nearest approximation.")
+                    }
                 }
 
                 if store.barStyle == .lens {
                     SectionHeader(title: "Lens")
                     HintText(text: "The bar photographs what is behind it and bends the picture in a shader of its own. Unlike the glass styles, which the window server draws, this needs Screen Recording — and macOS keeps its purple indicator lit in the menu bar while the bar is up.")
-                    if !screenRecordingGranted {
-                        SettingRow(title: "Screen Recording is not granted",
-                                   subtitle: "Without it the bar falls back to a plain fill. macOS applies the permission on the next launch.") {
-                            PillButton(title: "Grant…") {
-                                ScreenPhoto.requestPermission()
-                            }
+                }
+
+                // One row for both, since both read the screen and there is
+                // only one permission between them.
+                if readsTheScreen, !screenRecordingGranted {
+                    SectionHeader(title: "Permission")
+                    SettingRow(title: "Screen Recording is not granted",
+                               subtitle: "Without it the lens falls back to a plain fill and Auto to the system's theme. macOS applies the permission on the next launch.") {
+                        PillButton(title: "Grant…") {
+                            ScreenPhoto.requestPermission()
                         }
                     }
                 }
@@ -254,6 +270,11 @@ struct SettingsView: View {
     }
 
     // MARK: - Bindings
+
+    /// Whether anything currently switched on wants to look at the screen.
+    private var readsTheScreen: Bool {
+        store.barStyle.needsScreenRecording || store.barAppearance.needsScreenRecording
+    }
 
     private var glassStyle: Bool {
         store.barStyle == .glass || store.barStyle == .glassClear

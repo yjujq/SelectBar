@@ -93,8 +93,16 @@ Configured under Appearance:
   nested, so the icons keep their full strength however faint the bar behind
   them. Glass is left out — see below;
 - **background style** — Solid, Glass, Glass (clear), Blur, Lens;
-- **refraction**, for the glass styles — System, Deep, Sharp, Dome, Frost, Flat;
-- **theme** — system, light or dark, independent of the system;
+- **refraction** — seventeen of them. Six are the system's own manoeuvre with
+  different numbers (System, Deep, Sharp, Dome, Frost, Flat) and reach both the
+  glass styles and the lens. The other eleven are shapes of glass — Convex,
+  Concave, Fisheye, Cylinder, Prism, Reduce, Magnify, Bevel, Ripple,
+  Anamorphic, Fisheye prism — which only the Lens style can draw, the private
+  filter having no notion of them;
+- **theme** — system, light, dark, or **Auto**, which reads what the bar is
+  about to cover and takes the same side: dark over a dark page, light over a
+  light one. That reading needs Screen Recording, and without it Auto falls
+  back to the system's setting;
 - **tint** — any colour with adjustable opacity.
 
 The shape is always a capsule: the radius is half the height, so the
@@ -228,6 +236,15 @@ A stock clear bar comes with an inner amount of −60 over a height of 20. The
 settings are those numbers with different values — see `BarLens`. Deep spreads
 the bend across the whole cap at −400, Sharp packs −260 into a band of 10, Flat
 sets the amount to zero and leaves a plain translucent plate.
+
+The eleven shapes beyond those six are not amounts at all. A fisheye is radial,
+a cylinder works in one axis, a prism splits the channels apart, and Reduce
+reads three and a half bar-widths across to shrink a paragraph into the bar —
+none of which any pair of numbers in that filter can express. They live in the
+shader, and the glass styles take the nearest approximation the filter can
+manage. Reading wider than the bar is also why the photograph is taken four
+times its size: cut to the bar, the sampler repeats the edge column, which is
+what the stronger settings used to smear across their caps.
 
 Two details make it work. The filter does not exist until the glass has drawn
 itself once, and the system fills it in then, overwriting anything written

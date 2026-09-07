@@ -102,7 +102,43 @@ enum BarStyle: String, Codable, CaseIterable, Identifiable {
 /// changed, and the bar keeps the system's own look.
 enum BarLens: String, Codable, CaseIterable, Identifiable {
     case system, deep, sharp, dome, frost, flat
+    case convex, concave, fisheye, cylinder, prism
+    case reduce, magnify, bevel, ripple, anamorphic
+    case fisheyePrism
     var id: String { rawValue }
+
+    /// Which way the shader bends the picture.
+    ///
+    /// The first six are all the same manoeuvre with different numbers — the
+    /// bend lives in a band along the outline, which is what the system's own
+    /// glass does. The five after them are different shapes of glass, and no
+    /// choice of amount and height reaches them: a fisheye is radial, a
+    /// cylinder works in one axis, a prism splits the channels apart. They are
+    /// therefore the shader's business alone. The glass styles, which have only
+    /// the private filter to work with, take the approximation in `parameters`
+    /// and cannot do better.
+    enum Shape: Int32 {
+        case edge = 0, convex, concave, fisheye, cylinder, prism
+        case reduce, magnify, bevel, ripple, anamorphic
+        case fisheyePrism
+    }
+
+    var shape: Shape {
+        switch self {
+        case .convex:   return .convex
+        case .concave:  return .concave
+        case .fisheye:  return .fisheye
+        case .cylinder: return .cylinder
+        case .prism:      return .prism
+        case .reduce:     return .reduce
+        case .magnify:    return .magnify
+        case .bevel:      return .bevel
+        case .ripple:     return .ripple
+        case .anamorphic: return .anamorphic
+        case .fisheyePrism: return .fisheyePrism
+        default:          return .edge
+        }
+    }
 
     var title: String {
         switch self {
@@ -112,6 +148,17 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case .dome:   return "Dome"
         case .frost:  return "Frost"
         case .flat:   return "Flat"
+        case .convex:   return "Convex"
+        case .concave:  return "Concave"
+        case .fisheye:  return "Fisheye"
+        case .cylinder: return "Cylinder"
+        case .prism:    return "Prism"
+        case .reduce:     return "Reduce"
+        case .magnify:    return "Magnify"
+        case .bevel:      return "Bevel"
+        case .ripple:     return "Ripple"
+        case .anamorphic: return "Anamorphic"
+        case .fisheyePrism: return "Fisheye prism"
         }
     }
 
@@ -123,6 +170,17 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case .dome:   return "Refraction on both sides of the edge — the bar reads as a thicker piece of glass sitting above the page."
         case .frost:  return "A gentle bend behind a much heavier blur. Whatever is underneath stops being readable and becomes texture."
         case .flat:   return "No bend at all: a plain translucent plate. Useful when the bar sits over text that must stay legible."
+        case .convex:   return "A magnifying glass: the middle is pushed outwards, so whatever is under the bar comes up larger and the edges crowd together."
+        case .concave:  return "The opposite face. The middle is drawn in, the page shrinks away under the bar and more of it fits behind the glass."
+        case .fisheye:  return "A magnification that grows towards the middle and dies at the rim, the way a drop of water sits on a page."
+        case .cylinder: return "Bent across the short axis only, like a glass rod laid on the page: lines bow as they pass under it and run straight again at the ends."
+        case .prism:    return "The three channels bend by different amounts, so the edges break into colour the way a bevel does in sunlight."
+        case .reduce:     return "A reducing glass. What is under the bar is pulled down to a third of its size, so a whole paragraph fits behind it."
+        case .magnify:    return "The strongest magnification here: a couple of words fill the bar, at two and a half times their size."
+        case .bevel:      return "A thick plate with a chamfered edge. The middle is a clear window and all the bending happens in the last few pixels."
+        case .ripple:     return "Rings running out from the centre, as though a drop had just landed on the page."
+        case .anamorphic: return "Squeezed across the long axis alone: lines keep their height and lose their width, so more of a sentence fits than should."
+        case .fisheyePrism: return "Both at once, which is what one piece of real glass does: it magnifies from the middle outwards, and the three colours do not magnify by quite the same amount. The fringe is nothing at the centre and widest at the rim."
         }
     }
 
@@ -143,21 +201,52 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
                               "inputBlurRadius": 26]
         case .flat:   return ["inputInnerRefractionAmount": 0,
                               "inputInnerRefractionHeight": 0]
+        // The five below are shapes the private filter has no notion of. What
+        // it is given here is the nearest thing in its own vocabulary, so the
+        // glass styles change at all when the setting does; only the lens
+        // draws them as described.
+        case .convex:   return ["inputInnerRefractionAmount": -150,
+                                "inputInnerRefractionHeight": 34]
+        case .concave:  return ["inputInnerRefractionAmount": -90,
+                                "inputInnerRefractionHeight": 30]
+        case .fisheye:  return ["inputInnerRefractionAmount": -320,
+                                "inputInnerRefractionHeight": 40]
+        case .cylinder: return ["inputInnerRefractionAmount": -180,
+                                "inputInnerRefractionHeight": 28]
+        case .prism:    return ["inputInnerRefractionAmount": -120,
+                                "inputInnerRefractionHeight": 14]
+        case .reduce:     return ["inputInnerRefractionAmount": -260,
+                                  "inputInnerRefractionHeight": 44]
+        case .magnify:    return ["inputInnerRefractionAmount": -200,
+                                  "inputInnerRefractionHeight": 36]
+        case .bevel:      return ["inputInnerRefractionAmount": -300,
+                                  "inputInnerRefractionHeight": 6]
+        case .ripple:     return ["inputInnerRefractionAmount": -140,
+                                  "inputInnerRefractionHeight": 24]
+        case .anamorphic: return ["inputInnerRefractionAmount": -170,
+                                  "inputInnerRefractionHeight": 30]
+        case .fisheyePrism: return ["inputInnerRefractionAmount": -340,
+                                    "inputInnerRefractionHeight": 38]
         }
     }
 }
 
 /// A light or dark bar, independent of the system.
 enum BarAppearance: String, Codable, CaseIterable, Identifiable {
-    case system, light, dark
+    case system, light, dark, auto
     var id: String { rawValue }
     var title: String {
         switch self {
         case .system: return "System"
         case .light:  return "Light"
         case .dark:   return "Dark"
+        case .auto:   return "Auto"
         }
     }
+
+    /// Auto reads the screen to know what it is sitting on, so it wants the
+    /// same permission the lens does.
+    var needsScreenRecording: Bool { self == .auto }
 }
 
 struct ActionDefinition: Codable, Identifiable, Hashable {
