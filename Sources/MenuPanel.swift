@@ -51,6 +51,10 @@ final class FloatingPanel {
         panel.level = .popUpMenu
         panel.hidesOnDeactivate = false
         panel.acceptsMouseMovedEvents = true
+        // Out of every capture, for the same reason as the bar's own panel:
+        // the preview in settings is a lens too, and would otherwise film the
+        // settings window it sits in.
+        panel.sharingType = .none
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.contentView = hosting
 

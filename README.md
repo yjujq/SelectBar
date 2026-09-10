@@ -259,16 +259,35 @@ macOS release. Every step is checked before use — an input that does not read
 back is skipped — and if the shape of it ever stops matching, the bar keeps
 exactly the look the system gave it.
 
-**The Lens style is that discarded route, kept as an option.** It photographs
-the screen behind the bar through ScreenCaptureKit — one still when the bar
-appears, not a stream, since nothing moves underneath in the second or two it
-is up — and bends the picture in a Metal shader. The capsule is a signed
+**The Lens style is that discarded route, kept as an option.** It films the
+screen behind the bar through ScreenCaptureKit and bends the picture in a Metal
+shader. It began as one still taken when the bar appeared, on the reasoning
+that nothing moves underneath in the second or two it is up. That is wrong
+often enough to matter — video plays, pages scroll — and the lens sat showing a
+moment that had passed, so it is an `SCStream` at thirty frames a second, alive
+only while the bar is. The frames arrive as `CVPixelBuffer`s and reach the
+shader through a `CVMetalTextureCache` without being copied; repeating single
+screenshots on a timer would cost far more, each one enumerating the shareable
+content of the whole machine before it could begin. The capsule is a signed
 distance field there too, and the bend is that field's gradient applied to the
 coordinate the picture is sampled at, falling off to nothing a band's width in.
 The Refraction setting drives both routes: the same numbers go into the private
 filter for glass and into the shader for the lens. The shader is compiled at
 runtime rather than shipped as a `.metallib` — the build is one call to
 `swiftc`, and adding a Metal step for eighty lines would be the larger change.
+
+**The bar keeps itself out of its own film.** Not by the capture filter, which
+excludes this application by asking for the list of applications with windows
+on screen — a list the bar's panel is not in yet the first time round, because
+it is still being assembled. The exclusion came out empty and the lens filmed
+itself, folding its own picture in over and over. Every window the app puts on
+screen is instead marked `sharingType = .none`, which the window server obeys
+without anyone having to enumerate anything.
+
+A stream also takes a moment to start, and may never start at all — the
+permission refused, or granted just now and not in force until the next launch.
+The lens shows the plain fill until its first frame, so the worst case is the
+Solid style rather than a hole where the bar should be.
 
 The conversion from the filter's amounts to pixels is fitted by eye against a
 rendering of the shader, not derived: `amount` is not a distance. Two things

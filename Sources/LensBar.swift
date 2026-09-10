@@ -1,4 +1,6 @@
 import AppKit
+import CoreMedia
+import CoreVideo
 import Metal
 import ScreenCaptureKit
 
@@ -13,10 +15,17 @@ import ScreenCaptureKit
 /// Recording. The purple indicator in the menu bar is the price, and it is why
 /// this is an option rather than the default.
 ///
-/// It is a photograph, not a film. The bar is up for a second or two and what
-/// is behind it does not move in that time, so one capture when it appears is
-/// enough — and a still costs neither the frame rate nor the battery of a
-/// stream.
+/// It was a photograph at first, taken once as the bar appeared, on the
+/// reasoning that nothing moves underneath in the second or two it is up. That
+/// is wrong often enough to matter: video plays, pages scroll, and the lens sat
+/// there showing a moment that had passed.
+///
+/// So it is a film. `SCStream` is the tool for it — the one thing in
+/// ScreenCaptureKit meant for continuous capture — and it hands back
+/// `CVPixelBuffer`s the texture cache turns into Metal textures without a copy.
+/// Repeating single screenshots on a timer would cost far more: each one
+/// enumerates the shareable content of the whole machine before it can begin.
+/// The stream runs only while the bar is on screen.
 @MainActor
 final class LensView: NSView {
 
@@ -27,22 +36,35 @@ final class LensView: NSView {
     /// The capsule's radius, in points.
     var cornerRadius: CGFloat = 0
 
+    /// What to show until the first frame arrives, and if none ever does.
+    ///
+    /// A stream takes a moment to start, and it may never start at all —
+    /// Screen Recording refused, or granted just now and not in force until
+    /// the next launch. Drawing nothing in the meantime left a hole where the
+    /// bar should be: the icons floating over the page with no bar under them.
+    /// The plain fill stands in, so the worst case is the Solid style rather
+    /// than nothing at all.
+    var fallback: NSColor = .clear
+
     private var renderer: LensRenderer?
-    private var captured: CGImage?
+    private let stream = LensStream()
+    private var latest: CVPixelBuffer?
     /// Where the bar sits inside the photograph, 0 to 1 on each axis. Not the
     /// whole of it: the picture is taken wider than the bar.
     private var barInPicture = CGRect(x: 0, y: 0, width: 1, height: 1)
-    /// The capture is asked for once. Without this a window change — moving
-    /// between spaces, say — would set another one going for the same bar.
-    private var asked = false
+    /// The stream is started once. Without this a window change — moving
+    /// between spaces, say — would set a second one going for the same bar.
+    private var started = false
 
     override func makeBackingLayer() -> CALayer {
         let layer = CAMetalLayer()
         layer.pixelFormat = .bgra8Unorm
         layer.isOpaque = false
-        // Drawn on demand rather than on a display link: the picture behind
-        // the bar is taken once and never changes while it is up.
-        layer.presentsWithTransaction = true
+        // Frames arrive from the stream at their own pace, and each is drawn
+        // as it comes. Not presentsWithTransaction: that waits for the command
+        // buffer to finish before handing the drawable over, which is right
+        // for a single picture and a stall for thirty a second.
+        layer.presentsWithTransaction = false
         return layer
     }
 
@@ -50,15 +72,33 @@ final class LensView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil, !asked else { return }
-        asked = true
-        capture()
+        guard window != nil else {
+            // The bar has gone. Nothing is watching the screen any more, and
+            // the indicator in the menu bar goes out with it.
+            stream.stop()
+            started = false
+            return
+        }
+        guard !started else { return }
+        started = true
+        beginCapture()
     }
+
+    deinit { stream.stop() }
 
     override func layout() {
         super.layout()
         guard let layer = layer as? CAMetalLayer else { return }
         let scale = window?.backingScaleFactor ?? 2
+
+        // The fill sits on the layer beneath whatever the shader draws. The
+        // shader leaves everything outside the capsule transparent, and the
+        // rounded corner here is that same capsule, so the two agree on the
+        // silhouette and only the inside is ever replaced.
+        layer.backgroundColor = fallback.cgColor
+        layer.cornerRadius = cornerRadius
+        layer.masksToBounds = true
+
         layer.contentsScale = scale
         layer.drawableSize = CGSize(width: bounds.width * scale,
                                     height: bounds.height * scale)
@@ -97,7 +137,7 @@ final class LensView: NSView {
     /// colour at the cap.
     private let overscan: CGFloat = 4
 
-    private func capture() {
+    private func beginCapture() {
         guard let (screen, rect) = screenRect(), rect.width > 1, rect.height > 1 else { return }
         let scale = window?.backingScaleFactor ?? 2
 
@@ -118,28 +158,119 @@ final class LensView: NSView {
                               height: rect.height / shot.height)
 
         let pixels = CGSize(width: shot.width * scale, height: shot.height * scale)
-        Task { [weak self] in
-            let image = await ScreenPhoto.take(of: shot, on: screen, sized: pixels)
-            guard let self, let image else { return }
-            self.captured = image
+        stream.onFrame = { [weak self] buffer in
+            guard let self else { return }
+            self.latest = buffer
             self.draw()
         }
+        stream.start(of: shot, on: screen, sized: pixels)
     }
 
     // MARK: - Drawing
 
     private func draw() {
         guard let layer = layer as? CAMetalLayer,
-              let captured,
+              let latest,
               layer.drawableSize.width > 0 else { return }
 
         if renderer == nil { renderer = LensRenderer() }
         guard let renderer else { return }
 
         let scale = window?.backingScaleFactor ?? 2
-        renderer.draw(image: captured, in: layer, barInPicture: barInPicture,
+        renderer.draw(frame: latest, in: layer, barInPicture: barInPicture,
                       radius: cornerRadius * scale,
                       lens: lens, scale: scale)
+    }
+}
+
+/// A live feed of whatever is on screen behind us.
+///
+/// Our own application is left out of it, which is what makes the capture safe
+/// to run while the bar is already on screen: without that the bar would film
+/// itself and every frame would fold the last one into the picture.
+final class LensStream: NSObject, SCStreamOutput, SCStreamDelegate {
+
+    /// Handed each frame on the main thread, for as long as the stream runs.
+    var onFrame: ((CVPixelBuffer) -> Void)?
+
+    private var stream: SCStream?
+    /// Frames are delivered here rather than on the main queue: the callback
+    /// arrives thirty times a second and the main thread has a panel to draw.
+    private let delivery = DispatchQueue(label: "local.selectbar.lens", qos: .userInitiated)
+
+    func start(of rect: CGRect, on screen: NSScreen, sized pixels: CGSize) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(
+                    false, onScreenWindowsOnly: true)
+
+                let number = screen.deviceDescription[
+                    NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+                guard let display = content.displays.first(where: {
+                    $0.displayID == number?.uint32Value
+                }) ?? content.displays.first else { return }
+
+                let ours = content.applications.filter {
+                    $0.bundleIdentifier == Bundle.main.bundleIdentifier
+                }
+                let filter = SCContentFilter(display: display,
+                                             excludingApplications: ours,
+                                             exceptingWindows: [])
+
+                let config = SCStreamConfiguration()
+                config.sourceRect = rect
+                config.width = Int(pixels.width.rounded())
+                config.height = Int(pixels.height.rounded())
+                config.captureResolution = .best
+                config.showsCursor = false
+                config.scalesToFit = false
+                // Thirty a second. The bar is small and short-lived, and past
+                // this the eye gains nothing while the machine pays for every
+                // frame.
+                config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+                config.pixelFormat = kCVPixelFormatType_32BGRA
+                config.queueDepth = 3
+
+                let stream = SCStream(filter: filter, configuration: config, delegate: self)
+                try stream.addStreamOutput(self, type: .screen,
+                                           sampleHandlerQueue: self.delivery)
+                try await stream.startCapture()
+                self.stream = stream
+            } catch {
+                // Permission refused, or the display went away between asking
+                // and starting. The bar keeps the plain fill underneath.
+                NSLog("SelectBar: the screen could not be filmed: \(error)")
+            }
+        }
+    }
+
+    func stop() {
+        guard let stream else { return }
+        self.stream = nil
+        Task { try? await stream.stopCapture() }
+    }
+
+    // MARK: - SCStreamOutput
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                of type: SCStreamOutputType) {
+        guard type == .screen, sampleBuffer.isValid else { return }
+
+        // A frame arrives even when nothing under the bar has changed, and
+        // then carries no image at all — the status says so. Drawing it would
+        // blank the bar.
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                  sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let raw = attachments.first?[.status] as? Int,
+              SCFrameStatus(rawValue: raw) == .complete,
+              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+        DispatchQueue.main.async { [weak self] in self?.onFrame?(buffer) }
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        NSLog("SelectBar: the lens stream stopped: \(error)")
     }
 }
 
@@ -277,8 +408,11 @@ final class LensRenderer {
     /// before anything could be drawn.
     private static let machinery: Machinery? = makeMachinery()
 
-    private var texture: MTLTexture?
-    private var textureSource: CGImage?
+    /// Turns a frame from the stream into a Metal texture without copying it:
+    /// the pixels stay where the window server put them and the GPU is handed
+    /// a view onto them. At thirty frames a second a copy each time would be
+    /// the most expensive thing here by far.
+    private var textures: CVMetalTextureCache?
 
     private static func makeMachinery() -> Machinery? {
         guard let device = MTLCreateSystemDefaultDevice(),
@@ -304,16 +438,17 @@ final class LensRenderer {
         }
     }
 
-    func draw(image: CGImage, in layer: CAMetalLayer, barInPicture: CGRect,
+    func draw(frame: CVPixelBuffer, in layer: CAMetalLayer, barInPicture: CGRect,
               radius: CGFloat, lens: BarLens, scale: CGFloat) {
         guard let machinery = Self.machinery else { return }
         layer.device = machinery.device
 
-        if textureSource !== image {
-            texture = Self.makeTexture(from: image, device: machinery.device)
-            textureSource = image
+        if textures == nil {
+            CVMetalTextureCacheCreate(kCFAllocatorDefault, nil, machinery.device, nil, &textures)
         }
-        guard let texture, let drawable = layer.nextDrawable() else { return }
+        guard let textures,
+              let texture = Self.texture(from: frame, cache: textures),
+              let drawable = layer.nextDrawable() else { return }
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = drawable.texture
@@ -352,38 +487,35 @@ final class LensRenderer {
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()
 
-        // presentsWithTransaction is set on the layer, so the drawable is
-        // handed over after the buffer has finished rather than scheduled
-        // alongside it — otherwise the first frame can reach the screen before
-        // it has been drawn, and the bar flickers as it appears.
+        // Scheduled rather than waited on: at thirty frames a second, blocking
+        // the main thread until the GPU is done would stall the whole panel.
+        buffer.present(drawable)
         buffer.commit()
-        buffer.waitUntilCompleted()
-        drawable.present()
+
+        // The cache hands out a texture per frame and holds each until told it
+        // may go. Left alone at thirty a second it grows without bound; this
+        // releases the ones no longer in use.
+        CVMetalTextureCacheFlush(textures, 0)
     }
 
-    private static func makeTexture(from image: CGImage, device: MTLDevice) -> MTLTexture? {
-        let width = image.width, height = image.height
+    /// A Metal view onto the frame's own pixels.
+    ///
+    /// The CVMetalTexture must outlive the encoding, hence holding it until
+    /// the texture has been taken from it; the cache reclaims it afterwards.
+    private static func texture(from frame: CVPixelBuffer,
+                                cache: CVMetalTextureCache) -> MTLTexture? {
+        let width = CVPixelBufferGetWidth(frame)
+        let height = CVPixelBufferGetHeight(frame)
         guard width > 0, height > 0 else { return nil }
 
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        descriptor.usage = .shaderRead
-        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
-
-        let rowBytes = width * 4
-        var bytes = [UInt8](repeating: 0, count: rowBytes * height)
-        guard let context = CGContext(
-            data: &bytes, width: width, height: height,
-            bitsPerComponent: 8, bytesPerRow: rowBytes,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
-        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        texture.replace(region: MTLRegionMake2D(0, 0, width, height),
-                        mipmapLevel: 0, withBytes: &bytes, bytesPerRow: rowBytes)
-        return texture
+        var wrapped: CVMetalTexture?
+        let status = CVMetalTextureCacheCreateTextureFromImage(
+            kCFAllocatorDefault, cache, frame, nil,
+            .bgra8Unorm, width, height, 0, &wrapped)
+        guard status == kCVReturnSuccess, let wrapped else { return nil }
+        return CVMetalTextureGetTexture(wrapped)
     }
+
 
     /// The shader itself.
     ///
