@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let notifications = NotificationWatcher()
     private var pendingWork: DispatchWorkItem?
     private var mouseDownPoint: NSPoint?
+    private var focusWatchers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyStatusIconVisibility()
@@ -186,10 +187,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
         }
         notifications.start()
+        watchForFocusChanges()
+    }
+
+    /// Take the bar away when the ground moves out from under it.
+    ///
+    /// The bar joins every space — it has to, or it would vanish whenever the
+    /// application beneath it changed one — and it never takes focus, so
+    /// nothing about switching away disturbs it on its own. It would ride
+    /// along to another desktop and hang there over a page it has nothing to
+    /// do with, still offering actions on a selection now out of sight.
+    ///
+    /// Both notifications come from the workspace and need no permission. A
+    /// four-finger swipe is caught here as a change of space rather than as a
+    /// gesture: the system keeps those swipes for itself and hands an ordinary
+    /// application nothing, so reading them would mean going to the private
+    /// multitouch framework for something the outcome already tells us.
+    private func watchForFocusChanges() {
+        let centre = NSWorkspace.shared.notificationCenter
+
+        // Switching applications takes away a bar already on screen, and does
+        // nothing else. It must not cancel a showing that has been scheduled
+        // and not yet happened: clicking into a window that was not frontmost
+        // activates its application, and that notification is delivered
+        // asynchronously — late enough to land inside the fraction of a second
+        // the bar waits before appearing. Cancelling there meant no bar at all
+        // on the first click into any background window, which is most of them.
+        focusWatchers.append(
+            centre.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                               object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { [weak self] in self?.popup.hide() }
+            })
+
+        // A change of space is different: it never comes of the click that
+        // summons the bar, so a showing still pending at that moment is one
+        // about to land on a desktop the selection is no longer on.
+        focusWatchers.append(
+            centre.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                               object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { [weak self] in
+                    self?.pendingWork?.cancel()
+                    self?.popup.hide()
+                }
+            })
     }
 
     private func stopWatching() {
         notifications.stop()
+        let centre = NSWorkspace.shared.notificationCenter
+        focusWatchers.forEach(centre.removeObserver(_:))
+        focusWatchers.removeAll()
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
             mouseMonitor = nil
