@@ -182,12 +182,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        notifications.onBanner = { [weak self] in
-            guard let self, self.store.blinkOnNotification else { return }
+        notifications.onBanner = {
             Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
         }
-        notifications.start()
+        applyNotificationWatching()
+        NotificationCenter.default.addObserver(
+            forName: .blinkSettingChanged, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { [weak self] in self?.applyNotificationWatching() }
+        }
         watchForFocusChanges()
+    }
+
+    /// Watch for notifications only while there is a reason to.
+    ///
+    /// Noticing them means a `log stream` of our own — a whole child process,
+    /// running for as long as the app does. It used to be started
+    /// unconditionally and the setting consulted afterwards, in the handler,
+    /// so a user who had switched the blinking off still paid for the process
+    /// that existed solely to call that handler. A machine with no keyboard
+    /// backlight paid for it too, and could never have got anything back.
+    private func applyNotificationWatching() {
+        if store.blinkOnNotification, Lights.available {
+            notifications.start()
+        } else {
+            notifications.stop()
+        }
     }
 
     /// Take the bar away when the ground moves out from under it.

@@ -29,6 +29,11 @@ enum Lights {
         return (client, first.uint64Value)
     }()
 
+    /// Whether this machine has a backlight to blink at all. A desktop, or a
+    /// keyboard without one, answers no — and then there is nothing worth
+    /// watching for notifications for.
+    static var available: Bool { keyboard != nil }
+
     private static func setKeyboard(_ level: Float) {
         guard let keyboard else { return }
         // Fade speed 0 with an immediate commit: otherwise the system eases

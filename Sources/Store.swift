@@ -3,6 +3,9 @@ import ServiceManagement
 
 extension Notification.Name {
     static let statusIconVisibilityChanged = Notification.Name("SelectBarStatusIconVisibilityChanged")
+    /// Watching for notifications costs a child process, so the app needs to
+    /// know the moment the setting that justifies it changes.
+    static let blinkSettingChanged = Notification.Name("SelectBarBlinkSettingChanged")
 }
 
 /// What a bar item does.
@@ -313,7 +316,12 @@ final class ActionStore: ObservableObject {
     @Published var offerPaste = true { didSet { defaults.set(offerPaste, forKey: "offerPaste") } }
 
     /// Blink the backlight when a notification arrives.
-    @Published var blinkOnNotification = true { didSet { defaults.set(blinkOnNotification, forKey: "blinkOnNotification") } }
+    @Published var blinkOnNotification = true {
+        didSet {
+            defaults.set(blinkOnNotification, forKey: "blinkOnNotification")
+            NotificationCenter.default.post(name: .blinkSettingChanged, object: nil)
+        }
+    }
 
     /// Whether to show the menu bar icon. Turning it off hides the only way
     /// into settings, so relaunching the app opens them by itself.

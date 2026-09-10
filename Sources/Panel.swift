@@ -105,6 +105,11 @@ final class PopupController {
             NSEvent.removeMonitor(monitor)
             dismissMonitor = nil
         }
+        // Told outright, not left to deallocation: the panel outlives this
+        // call by however long it takes the last reference to it to go, and
+        // the lens would go on filming for all of it.
+        lens?.stopFilming()
+        lens = nil
         panel?.orderOut(nil)
         panel = nil
     }
@@ -123,8 +128,17 @@ final class PopupController {
     /// ever fills — a controller kept solely for previewing has none, so the
     /// lookup finds nothing and the press does nothing.
     func previewBar(actions: [Action]) -> NSView {
-        buildBar(actions: actions)
+        building = .preview
+        defer { building = .bar }
+        return buildBar(actions: actions)
     }
+
+    /// The lens in the bar on screen, if the style is that one.
+    private weak var lens: LensView?
+
+    /// What is being built, which only the lens cares about — see `liveFor`.
+    private enum Building { case bar, preview }
+    private var building: Building = .bar
 
     private func buildBar(actions: [Action]) -> NSView {
         let store = ActionStore.shared
@@ -423,6 +437,12 @@ final class PopupController {
             view.lens = store.barLens
             view.cornerRadius = radius
             view.fallback = solidColor(store: store)
+            // The preview films briefly and holds its last frame; the bar
+            // films for as long as it is up, which is not long.
+            view.liveFor = building == .preview ? 2.5 : nil
+            // Held weakly so hide() can stop the camera the moment the bar
+            // goes, without keeping the view alive itself.
+            if building == .bar { lens = view }
             view.wantsLayer = true
             return fill(view)
         }

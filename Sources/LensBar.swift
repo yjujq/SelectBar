@@ -36,6 +36,17 @@ final class LensView: NSView {
     /// The capsule's radius, in points.
     var cornerRadius: CGFloat = 0
 
+    /// How long to keep filming, or nil to film for as long as the view is on
+    /// screen.
+    ///
+    /// The bar wants nil: it is up for a second or two and then gone, and the
+    /// indicator in the menu bar goes out with it. The preview in settings
+    /// wants a limit — it sits there for as long as the Appearance page is
+    /// open, which can be minutes, and there is no reason to hold the camera
+    /// on for all of them. It films long enough to show what the lens does and
+    /// then keeps its last frame.
+    var liveFor: TimeInterval?
+
     /// What to show until the first frame arrives, and if none ever does.
     ///
     /// A stream takes a moment to start, and it may never start at all —
@@ -69,6 +80,18 @@ final class LensView: NSView {
     }
 
     override var wantsUpdateLayer: Bool { true }
+
+    /// Stop filming now, rather than whenever this view happens to be freed.
+    ///
+    /// Ordering a panel out does not take its content view off the window, and
+    /// the window itself lives on until the last reference to it goes — which
+    /// is not the moment the bar disappears. Left to deallocation, the camera
+    /// ran on after the bar was gone and the indicator in the menu bar stayed
+    /// lit with nothing on screen to explain it.
+    func stopFilming() {
+        stream.stop()
+        started = false
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -164,6 +187,13 @@ final class LensView: NSView {
             self.draw()
         }
         stream.start(of: shot, on: screen, sized: pixels)
+
+        if let liveFor {
+            DispatchQueue.main.asyncAfter(deadline: .now() + liveFor) { [weak self] in
+                // The last frame stays on the layer; only the camera stops.
+                self?.stream.stop()
+            }
+        }
     }
 
     // MARK: - Drawing

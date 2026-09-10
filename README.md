@@ -276,6 +276,20 @@ filter for glass and into the shader for the lens. The shader is compiled at
 runtime rather than shipped as a `.metallib` — the build is one call to
 `swiftc`, and adding a Metal step for eighty lines would be the larger change.
 
+**The camera is told to stop, not left to be freed.** Ordering a panel out
+does not take its content view off the window, and the window itself outlives
+the call — measured: it and its views are still there after the autorelease
+pool drains, and go about a second later, when the run loop gets to them. The
+lens filmed for all of it, so the bar vanished and the recording indicator in
+the menu bar stayed lit with nothing on screen to account for it. Hiding the
+bar now stops the stream outright.
+
+That indicator cannot be dismissed, and nothing here tries. It is the system's
+own, drawn where no application can reach, and it is lit exactly as long as
+something is capturing. What can be done is to capture for less time — which is
+also why the preview in settings films for a couple of seconds and then holds
+its last frame, rather than running for as long as the Appearance page is open.
+
 **The bar keeps itself out of its own film.** Not by the capture filter, which
 excludes this application by asking for the list of applications with windows
 on screen — a list the bar's panel is not in yet the first time round, because
@@ -320,6 +334,14 @@ visibly.
 alongside mouse-up: the distance between them shows whether the mouse was
 dragged or clicked in place. A drag keeps the old 0.12 s delay, a click waits
 0.3 s so the showing can be cancelled when the second click arrives.
+
+**The log is only read while there is a reason to.** Noticing notifications
+means a `log stream` of our own — a whole child process, alive as long as the
+app is. It used to start unconditionally and consult the setting afterwards, in
+the handler, so switching the blinking off still paid for the process that
+existed to call that handler, and a machine with no keyboard backlight paid for
+it while never being able to get anything back. Measured, the process and its
+4.5 MB simply go.
 
 **Notifications are caught through the system log.** Subscribing through
 Accessibility to windows of the notification centre process does not work: that
