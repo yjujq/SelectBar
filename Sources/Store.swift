@@ -108,6 +108,7 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
     case convex, concave, fisheye, cylinder, prism
     case reduce, magnify, bevel, ripple, anamorphic
     case fisheyePrism
+    case fresnel, lenticular, axicon, aspheric, astigmatic, coma
     var id: String { rawValue }
 
     /// Which way the shader bends the picture.
@@ -124,6 +125,7 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case edge = 0, convex, concave, fisheye, cylinder, prism
         case reduce, magnify, bevel, ripple, anamorphic
         case fisheyePrism
+        case fresnel, lenticular, axicon, aspheric, astigmatic, coma
     }
 
     var shape: Shape {
@@ -139,6 +141,12 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case .ripple:     return .ripple
         case .anamorphic: return .anamorphic
         case .fisheyePrism: return .fisheyePrism
+        case .fresnel:    return .fresnel
+        case .lenticular: return .lenticular
+        case .axicon:     return .axicon
+        case .aspheric:   return .aspheric
+        case .astigmatic: return .astigmatic
+        case .coma:       return .coma
         default:          return .edge
         }
     }
@@ -162,6 +170,12 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case .ripple:     return "Ripple"
         case .anamorphic: return "Anamorphic"
         case .fisheyePrism: return "Fisheye prism"
+        case .fresnel:    return "Fresnel"
+        case .lenticular: return "Lenticular"
+        case .axicon:     return "Axicon"
+        case .aspheric:   return "Aspheric"
+        case .astigmatic: return "Astigmatic"
+        case .coma:       return "Coma"
         }
     }
 
@@ -184,6 +198,12 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
         case .ripple:     return "Rings running out from the centre, as though a drop had just landed on the page."
         case .anamorphic: return "Squeezed across the long axis alone: lines keep their height and lose their width, so more of a sentence fits than should."
         case .fisheyePrism: return "Both at once, which is what one piece of real glass does: it magnifies from the middle outwards, and the three colours do not magnify by quite the same amount. The fringe is nothing at the centre and widest at the rim."
+        case .fresnel:    return "A lighthouse lens. The curve of a thick piece of glass, cut into concentric rings and collapsed flat, so the bend starts over at every ring."
+        case .lenticular: return "A row of glass rods side by side, the way a lenticular print is ruled. Each one bends its own narrow strip, and the seams between them are visible on purpose."
+        case .axicon:     return "A cone rather than a dome. The bend is the same everywhere instead of growing from the middle, so the light gathers in a ring rather than a point."
+        case .aspheric:   return "A face that is nearly flat in the middle and turns sharply at the rim. Ground this way to cure the blur a plain sphere leaves at its edges."
+        case .astigmatic: return "One power across, another down — the shape of a spectacle lens for astigmatism. What is under the bar is stretched one way and squeezed the other."
+        case .coma:       return "The comet-shaped smear a lens gives what does not sit on its axis: sharp on one side, trailing on the other, worse the further out it goes."
         }
     }
 
@@ -230,6 +250,18 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
                                   "inputInnerRefractionHeight": 30]
         case .fisheyePrism: return ["inputInnerRefractionAmount": -340,
                                     "inputInnerRefractionHeight": 38]
+        case .fresnel:    return ["inputInnerRefractionAmount": -220,
+                                  "inputInnerRefractionHeight": 16]
+        case .lenticular: return ["inputInnerRefractionAmount": -180,
+                                  "inputInnerRefractionHeight": 12]
+        case .axicon:     return ["inputInnerRefractionAmount": -240,
+                                  "inputInnerRefractionHeight": 34]
+        case .aspheric:   return ["inputInnerRefractionAmount": -280,
+                                  "inputInnerRefractionHeight": 26]
+        case .astigmatic: return ["inputInnerRefractionAmount": -200,
+                                  "inputInnerRefractionHeight": 30]
+        case .coma:       return ["inputInnerRefractionAmount": -260,
+                                  "inputInnerRefractionHeight": 32]
         }
     }
 }

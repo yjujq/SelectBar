@@ -49,10 +49,20 @@ final class PopupController {
             defer: false
         )
         panel.isFloatingPanel = true
-        // Level 3: above ordinary app windows (0) but below the Dock (20), the
-        // menu bar (24), Control Centre (25) and context menus (~101). At
-        // popUpMenu the panel covered all of those, tooltips included.
-        panel.level = .floating
+        // Above everything, Picture in Picture included.
+        //
+        // This used to sit at .floating, level 3 — above ordinary windows and
+        // below the Dock, the menu bar and Control Centre — on the reasoning
+        // that a bar which covered those was worse than one that hid behind
+        // them. But Picture in Picture floats higher than 3, and so do several
+        // other always-on-top windows, and the bar went under them: summoned
+        // over a selection and then invisible. The screen saver's level is
+        // above all of it.
+        //
+        // The bar is not a window anyone leaves lying about — it appears at
+        // the cursor, and any click at all takes it away — so what it covers,
+        // it covers for a moment.
+        panel.level = .screenSaver
         panel.hidesOnDeactivate = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -436,7 +446,13 @@ final class PopupController {
             let view = LensView()
             view.lens = store.barLens
             view.cornerRadius = radius
-            view.fallback = solidColor(store: store)
+            // Transparent until the first frame. A plain fill was tried, so
+            // that a lens which could not film would look like the Solid style
+            // rather than a hole — but the moment before the first frame is
+            // the moment the bar is appearing, and a plate flashing there and
+            // then giving way to the picture is worse than nothing showing at
+            // all for that instant.
+            view.fallback = .clear
             // The preview films briefly and holds its last frame; the bar
             // films for as long as it is up, which is not long.
             view.liveFor = building == .preview ? 2.5 : nil

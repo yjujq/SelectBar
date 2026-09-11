@@ -93,12 +93,17 @@ Configured under Appearance:
   nested, so the icons keep their full strength however faint the bar behind
   them. Glass is left out — see below;
 - **background style** — Solid, Glass, Glass (clear), Blur, Lens;
-- **refraction** — seventeen of them. Six are the system's own manoeuvre with
-  different numbers (System, Deep, Sharp, Dome, Frost, Flat) and reach both the
-  glass styles and the lens. The other eleven are shapes of glass — Convex,
-  Concave, Fisheye, Cylinder, Prism, Reduce, Magnify, Bevel, Ripple,
-  Anamorphic, Fisheye prism — which only the Lens style can draw, the private
-  filter having no notion of them;
+- **refraction** — twenty-three of them. Six are the system's own manoeuvre
+  with different numbers (System, Deep, Sharp, Dome, Frost, Flat) and reach
+  both the glass styles and the lens. The other seventeen are shapes of glass —
+  Convex, Concave, Fisheye, Cylinder, Prism, Reduce, Magnify, Bevel, Ripple,
+  Anamorphic, Fisheye prism, and six named for the elements they imitate:
+  Fresnel, the lighthouse lens, its curve cut into rings and laid flat;
+  Lenticular, a row of glass rods; Axicon, a cone rather than a dome, gathering
+  light in a ring; Aspheric, nearly flat in the middle and sharp at the rim;
+  Astigmatic, one power across and another down; and Coma, the comet-shaped
+  smear given to whatever is off the axis. Only the Lens style draws these, the
+  private filter having no notion of them;
 - **theme** — system, light, dark, or **Auto**, which reads what the bar is
   about to cover and takes the same side: dark over a dark page, light over a
   light one. That reading needs Screen Recording, and without it Auto falls
@@ -300,8 +305,11 @@ without anyone having to enumerate anything.
 
 A stream also takes a moment to start, and may never start at all — the
 permission refused, or granted just now and not in force until the next launch.
-The lens shows the plain fill until its first frame, so the worst case is the
-Solid style rather than a hole where the bar should be.
+The lens draws nothing until its first frame. A plain fill was tried there, so
+that a lens which could not film would at least look like the Solid style, and
+taken out again: the moment before the first frame is the moment the bar is
+appearing, and a plate flashing and then giving way to the picture is worse
+than nothing at all for that instant.
 
 The conversion from the filter's amounts to pixels is fitted by eye against a
 rendering of the shader, not derived: `amount` is not a distance. Two things
@@ -325,6 +333,15 @@ through an intermediate composite, and the system then drops the effect
 altogether: the bar comes out a plain plate with no glass in it. So the opacity
 setting is disabled for both glass styles, which carry their own translucency
 through their style instead.
+
+**The bar sits above everything, Picture in Picture included.** It was at
+level 3 for a long time — above ordinary windows, below the Dock, the menu bar
+and Control Centre — on the reasoning that a bar covering those is worse than
+one hiding behind them. But Picture in Picture floats higher than 3, as do
+other always-on-top windows, and the bar went under them: summoned over a
+selection and then invisible. It is at the screen saver's level now, above all
+of it. What it covers, it covers for a moment — it appears at the cursor and
+any click at all takes it away.
 
 **Only the solid fill gets a shadow.** Glass casts its own and a second one lays
 a double outline over it; with blur the window shadow rimmed the capsule

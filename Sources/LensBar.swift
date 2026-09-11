@@ -626,6 +626,9 @@ final class LensRenderer {
         float2 norm = centred / halfSize;
         float r2 = dot(norm, norm);
         float2 edgeBend = g * (P.strength * t * t) / P.size;
+        // The strength in bar space rather than pixels, which is the unit a
+        // pick is measured in.
+        float2 push = float2(P.strength) / P.size;
 
         // Where to read from, in bar space. A scale above 1 reads from wider
         // afield than the bar covers and so shrinks what is under it; below 1
@@ -648,6 +651,43 @@ final class LensRenderer {
                 break;
             }
             case 10: pick = 0.5 + float2(c.x * 2.4, c.y); break;  // Anamorphic
+
+            case 12: {   // Fresnel: the curve cut into rings and laid flat.
+                // A thick lens's face, sliced into concentric bands with the
+                // bulk thrown away. Each band carries the same slope the whole
+                // curve would have had there, so the bend starts over at every
+                // ring — which is what makes the rings visible.
+                const float rings = 4.0;
+                float radius = length(norm);
+                float within = fract(radius * rings) - 0.5;
+                pick = unit + normalize(norm + float2(1e-6)) * within * push * 3.2;
+                break;
+            }
+            case 13: {   // Lenticular: a row of glass rods laid side by side.
+                const float rods = 7.0;
+                float across = fract(unit.x * rods) - 0.5;
+                pick = unit + float2(-across * P.strength * 2.0 / P.size.x, 0.0);
+                break;
+            }
+            case 14:     // Axicon: a cone, so the slope never changes.
+                // A dome's bend grows with the radius; a cone's does not. The
+                // light it gathers falls in a ring rather than a point.
+                pick = unit + normalize(norm + float2(1e-6)) * push * 1.1;
+                break;
+            case 15:     // Aspheric: flat in the middle, sharp at the rim.
+                pick = 0.5 + c * (1.0 - 0.75 * r2 * r2 * r2);
+                break;
+            case 16:     // Astigmatic: one power across, another down.
+                pick = 0.5 + float2(c.x * 0.65, c.y * 1.7);
+                break;
+            case 17: {   // Coma: the smear given to what is off the axis.
+                // Sharp on the side towards the axis and trailing away from
+                // it, and worse the further out — hence the square of the
+                // radius rather than the radius itself.
+                float2 away = normalize(norm + float2(1e-6));
+                pick = unit + (away + float2(0.35, 0.0)) * r2 * push * 2.6;
+                break;
+            }
             default: pick = unit + edgeBend; break;               // Edge, and the rest
         }
 
