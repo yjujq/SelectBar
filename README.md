@@ -22,8 +22,16 @@ buttons show depends on what is selected and on whether typing is allowed there:
 | `Editable fields` | a double click in an empty input field |
 
 The last row is the paste button: it appears on a double click in an empty field
-and shows the start of the pasteboard contents right in its tooltip. A single
-click does not summon the bar — that is just placing the caret.
+and shows the start of the pasteboard contents right in its tooltip.
+
+A plain single click never summons the bar, and is not even looked into. It
+cannot have made a selection — a word takes two clicks, a line or a paragraph
+three, a run of text a drag — so there is nothing to ask Accessibility about.
+Asking anyway did harm: a selection made in one window stays there and goes on
+being reported, while a click elsewhere in the same application changes no
+focus anyone is told about, and the bar came back over text the pointer had
+long left. Shift-clicking is the exception and is looked into: it extends a
+selection that already exists, and arrives as a single click like any other.
 
 An item can carry a length limit: speaking, for instance, is not offered for a
 selection longer than 800 characters.

@@ -172,12 +172,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // passed into an isolated closure.
             let isDown = event.type == .leftMouseDown
             let clicks = event.clickCount
+            let modifiers = event.modifierFlags
             let point = NSEvent.mouseLocation
             MainActor.assumeIsolated { [weak self] in
                 if isDown {
                     self?.mouseDownPoint = point
                 } else {
-                    self?.handleMouseUp(at: point, clickCount: clicks)
+                    self?.handleMouseUp(at: point, clickCount: clicks,
+                                        modifiers: modifiers)
                 }
             }
         }
@@ -263,11 +265,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func handleMouseUp(at point: NSPoint, clickCount: Int) {
+    private func handleMouseUp(at point: NSPoint, clickCount: Int,
+                               modifiers: NSEvent.ModifierFlags) {
         popup.hide()
 
         // The selection does not settle the instant the button is released.
         pendingWork?.cancel()
+
+        let dragged = mouseDownPoint.map { down in
+            abs(down.x - point.x) + abs(down.y - point.y) > 4
+        } ?? false
+
+        // A plain single click makes no selection. It places a caret, and that
+        // is all — a word takes two clicks, a line or a paragraph three, and a
+        // run of text a drag. So there is nothing here worth asking
+        // Accessibility about, and asking anyway was doing harm: a selection
+        // made in one window stays there, still reported, while a click
+        // somewhere else in the same application changes no focus we are told
+        // about. The bar came back over text the pointer had long left.
+        //
+        // Shift is the exception, and the reason this is not simply a test on
+        // the click count: shift-clicking extends a selection that already
+        // exists, and arrives as a single click like any other.
+        if clickCount == 1, !dragged, !modifiers.contains(.shift) { return }
         let work = DispatchWorkItem {
             MainActor.assumeIsolated { [weak self] in
             guard let self else { return }
@@ -297,9 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //
         // A drag selection needs no wait: no double click follows one, and the
         // extra delay would be noticeable on every selection.
-        let dragged = mouseDownPoint.map { down in
-            abs(down.x - point.x) + abs(down.y - point.y) > 4
-        } ?? false
+        //
         // 0.3 instead of the system interval: that defaults to half a second,
         // while the second click actually arrives noticeably sooner. Waiting
         // the full interval was too obvious on every double click.
