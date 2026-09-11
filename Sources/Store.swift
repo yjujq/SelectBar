@@ -3,9 +3,6 @@ import ServiceManagement
 
 extension Notification.Name {
     static let statusIconVisibilityChanged = Notification.Name("SelectBarStatusIconVisibilityChanged")
-    /// Watching for notifications costs a child process, so the app needs to
-    /// know the moment the setting that justifies it changes.
-    static let blinkSettingChanged = Notification.Name("SelectBarBlinkSettingChanged")
 }
 
 /// What a bar item does.
@@ -347,14 +344,6 @@ final class ActionStore: ObservableObject {
     @Published var definitions: [ActionDefinition] = [] { didSet { save() } }
     @Published var offerPaste = true { didSet { defaults.set(offerPaste, forKey: "offerPaste") } }
 
-    /// Blink the backlight when a notification arrives.
-    @Published var blinkOnNotification = true {
-        didSet {
-            defaults.set(blinkOnNotification, forKey: "blinkOnNotification")
-            NotificationCenter.default.post(name: .blinkSettingChanged, object: nil)
-        }
-    }
-
     /// Whether to show the menu bar icon. Turning it off hides the only way
     /// into settings, so relaunching the app opens them by itself.
     @Published var showStatusIcon = true {
@@ -385,7 +374,6 @@ final class ActionStore: ObservableObject {
     private init() {
         offerPaste = defaults.object(forKey: "offerPaste") as? Bool ?? true
         showStatusIcon = defaults.object(forKey: "showStatusIcon") as? Bool ?? true
-        blinkOnNotification = defaults.object(forKey: "blinkOnNotification") as? Bool ?? true
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
         barOpacity = defaults.object(forKey: "barOpacity") as? Double ?? 0.85
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
@@ -407,6 +395,8 @@ final class ActionStore: ObservableObject {
         .init(title: "Speak",     symbol: "speaker.wave.2",     kind: .builtin("speak"),     context: .plainText,
               maxTextLength: 800),
         .init(title: "Paste",     symbol: "doc.on.clipboard",   kind: .builtin("paste"), context: .emptyField),
+        .init(title: "Paste and go", symbol: "arrow.right.doc.on.clipboard",
+              kind: .builtin("pasteGo"), context: .emptyField, enabled: false),
 
         // Below, modelled on PopClip's extensions. All disabled: they are
         // turned on one at a time in the Actions tab so the bar does not grow

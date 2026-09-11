@@ -117,8 +117,22 @@ struct Action {
     /// A key press with no modifiers.
     static func pressPlain(key: CGKeyCode) {
         guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
-        CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)?.post(tap: .cghidEventTap)
-        CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)?.post(tap: .cghidEventTap)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
+        // Stated rather than inherited. The source carries whatever modifiers
+        // the session thinks are held, and a press meant to be plain must be
+        // plain whatever it thinks.
+        down?.flags = []
+        up?.flags = []
+
+        down?.post(tap: .cghidEventTap)
+        // A beat between the two. Released in the same instant it is pressed,
+        // the pair reads as no press at all to some applications — browsers
+        // especially, where the key is watched from a script rather than by
+        // the text field itself.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+            up?.post(tap: .cghidEventTap)
+        }
     }
 
     /// Replace the selection: put it on the pasteboard and paste.
@@ -168,6 +182,23 @@ struct Action {
             }
         case "paste":
             return { _ in pressCommand(key: 9) }   // 9 = V
+
+        case "pasteGo":
+            // Paste, then act on what was pasted — an address bar goes to the
+            // address, a search field searches, a message field sends.
+            return { _ in
+                pressCommand(key: 9)               // 9 = V
+                // The field needs a moment to take the paste before it is told
+                // to act on it. A pasted address is not simply text arriving:
+                // an address bar re-reads it, offers completions and lays
+                // itself out again, and a Return that lands in the middle of
+                // that is dropped. A tenth of a second was not enough —
+                // reported as pasting and then doing nothing at all. A third
+                // still reads as instant.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    pressPlain(key: 36)            // 36 = Return
+                }
+            }
 
         // Text transformations modelled on PopClip's extensions.
         case "upper":

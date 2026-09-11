@@ -259,10 +259,6 @@ struct SettingsView: View {
                            subtitle: "Hidden, the only way back is to launch the app again.",
                            toggle: $store.showStatusIcon)
 
-                SectionHeader(title: "Keyboard")
-                SettingRow(title: "Blink on notifications",
-                           subtitle: "Flashes the backlight when a banner arrives.",
-                           toggle: $store.blinkOnNotification)
             }
             .padding(.bottom, 12)
         }

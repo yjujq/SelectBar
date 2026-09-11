@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsPanel = FloatingPanel()
     private let store = ActionStore.shared
     private var mouseMonitor: Any?
-    private let notifications = NotificationWatcher()
     private var pendingWork: DispatchWorkItem?
     private var mouseDownPoint: NSPoint?
     private var focusWatchers: [NSObjectProtocol] = []
@@ -184,32 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        notifications.onBanner = {
-            Task { await Lights.blink(duration: .seconds(3), interval: .milliseconds(400)) }
-        }
-        applyNotificationWatching()
-        NotificationCenter.default.addObserver(
-            forName: .blinkSettingChanged, object: nil, queue: .main
-        ) { _ in
-            MainActor.assumeIsolated { [weak self] in self?.applyNotificationWatching() }
-        }
         watchForFocusChanges()
-    }
-
-    /// Watch for notifications only while there is a reason to.
-    ///
-    /// Noticing them means a `log stream` of our own — a whole child process,
-    /// running for as long as the app does. It used to be started
-    /// unconditionally and the setting consulted afterwards, in the handler,
-    /// so a user who had switched the blinking off still paid for the process
-    /// that existed solely to call that handler. A machine with no keyboard
-    /// backlight paid for it too, and could never have got anything back.
-    private func applyNotificationWatching() {
-        if store.blinkOnNotification, Lights.available {
-            notifications.start()
-        } else {
-            notifications.stop()
-        }
     }
 
     /// Take the bar away when the ground moves out from under it.
@@ -255,7 +229,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopWatching() {
-        notifications.stop()
         let centre = NSWorkspace.shared.notificationCenter
         focusWatchers.forEach(centre.removeObserver(_:))
         focusWatchers.removeAll()

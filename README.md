@@ -138,13 +138,6 @@ menu:
 - **Open Accessibility Settings** — appears only while access is not granted;
 - **Quit** (⌘Q).
 
-## Keyboard backlight
-
-The keyboard blinks on **incoming notifications** — from mail, messengers,
-anything.
-
-The blink is switched on and off under Behaviour.
-
 ## Settings without a window
 
 One setting is not exposed in the interface and is changed by command:
@@ -360,35 +353,11 @@ alongside mouse-up: the distance between them shows whether the mouse was
 dragged or clicked in place. A drag keeps the old 0.12 s delay, a click waits
 0.3 s so the showing can be cancelled when the second click arrives.
 
-**The log is only read while there is a reason to.** Noticing notifications
-means a `log stream` of our own — a whole child process, alive as long as the
-app is. It used to start unconditionally and consult the setting afterwards, in
-the handler, so switching the blinking off still paid for the process that
-existed to call that handler, and a machine with no keyboard backlight paid for
-it while never being able to get anything back. Measured, the process and its
-4.5 MB simply go.
+## What moved out
 
-**Notifications are caught through the system log.** Subscribing through
-Accessibility to windows of the notification centre process does not work: that
-only catches the panel opened by clicking the clock, while a banner creates
-neither a window nor an element. For every delivered notification the `usernoted`
-service writes a line containing `NotificationRecord app:"…"`, and that is what
-`log stream` reads. Orphaned reader processes are reaped at startup: on a crash
-the exit handler never runs and they would accumulate.
-
-**The keyboard backlight** goes through the private `CoreBrightness` framework,
-loaded dynamically. There is no public interface; the methods were found by
-enumerating them through the runtime.
-
-**A blink never starts on a dark keyboard.** The level is written with a commit,
-so it is stored as the standing preference — and a blink that ends on zero pins
-zero, leaving the light dead through every later wake. That is exactly what
-happened after sleep: waking syncs mail, the notification arrives before the
-system has restored the backlight, zero gets read as "the original" and
-faithfully written back. A reading of zero is now left alone; there is no
-telling it from a backlight the owner switched off, and both make blinking
-wrong. The restore itself sits in a `defer` rather than after the loop, since
-sleep suspends the task mid-blink and a plain trailing line simply never ran.
+Blinking the keyboard backlight on incoming notifications used to live here. It
+had nothing to do with a bar of actions over selected text, and it is now in
+**Hinge**, alongside the lid projection — the place for things of that kind.
 
 ## Building
 
