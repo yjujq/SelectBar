@@ -183,6 +183,13 @@ struct Action {
         case "paste":
             return { _ in pressCommand(key: 9) }   // 9 = V
 
+        case "selectAll":
+            // The bar never takes focus, so this lands in the field the
+            // selection came from. What follows is a larger selection, which
+            // brings the bar straight back with everything in it — which is
+            // the point: select all, then act on the lot.
+            return { _ in pressCommand(key: 0) }   // 0 = A
+
         case "pasteGo":
             // Paste, then act on what was pasted — an address bar goes to the
             // address, a search field searches, a message field sends.

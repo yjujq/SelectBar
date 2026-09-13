@@ -397,6 +397,10 @@ final class ActionStore: ObservableObject {
         .init(title: "Paste",     symbol: "doc.on.clipboard",   kind: .builtin("paste"), context: .emptyField),
         .init(title: "Paste and go", symbol: "arrow.right.doc.on.clipboard",
               kind: .builtin("pasteGo"), context: .emptyField, enabled: false),
+        // Any text, not only editable: selecting all of a page one cannot
+        // type into is as much the point as selecting all of a field.
+        .init(title: "Select All", symbol: "text.viewfinder",
+              kind: .builtin("selectAll"), context: .anyText),
 
         // Below, modelled on PopClip's extensions. All disabled: they are
         // turned on one at a time in the Actions tab so the bar does not grow
