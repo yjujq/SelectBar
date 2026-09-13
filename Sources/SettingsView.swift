@@ -488,7 +488,10 @@ private struct ActionsPage: View {
     private func addAction() {
         let new = ActionDefinition(title: "New item", symbol: "star",
                                    kind: .openURL("https://example.com/?q={text}"))
-        store.definitions.append(new)
+        // With the rest of what is switched on, not below everything that is
+        // off: a new item arrives switched on, so that is where it belongs.
+        let target = store.definitions.lastIndex(where: \.enabled).map { $0 + 1 } ?? 0
+        store.definitions.insert(new, at: target)
         page = .editor(new.id)
     }
 }

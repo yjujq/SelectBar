@@ -341,7 +341,54 @@ struct ActionDefinition: Codable, Identifiable, Hashable {
 final class ActionStore: ObservableObject {
     static let shared = ActionStore()
 
-    @Published var definitions: [ActionDefinition] = [] { didSet { save() } }
+    @Published var definitions: [ActionDefinition] = [] {
+        didSet {
+            if !regrouping {
+                regrouping = true
+                lift(after: oldValue)
+                regrouping = false
+            }
+            save()
+        }
+    }
+
+    /// Set while the list is being rearranged by the line below, so that the
+    /// rearrangement does not set it off again.
+    private var regrouping = false
+
+    /// Switching an action on lifts it above everything switched off, and
+    /// switching one off drops it below everything switched on.
+    ///
+    /// The list is fifty-odd items and most of them are off, so without this
+    /// the handful in use end up scattered through a page of ones that are
+    /// not. It costs nothing that matters: the bar reads the same list in the
+    /// same order and takes only what is on, so moving an item across the
+    /// boundary between on and off cannot change what the bar looks like.
+    ///
+    /// It moves the one item that changed rather than re-sorting everything,
+    /// so an order arranged by hand stays arranged. Anything that is not a
+    /// single switch being flipped — an item added, the list reset, a drag —
+    /// is left alone.
+    private func lift(after old: [ActionDefinition]) {
+        guard old.count == definitions.count else { return }
+        let before = Dictionary(old.map { ($0.id, $0.enabled) }, uniquingKeysWith: { a, _ in a })
+        let switched = definitions.indices.filter {
+            guard let was = before[definitions[$0].id] else { return true }
+            return was != definitions[$0].enabled
+        }
+        guard switched.count == 1, let index = switched.first else { return }
+
+        let item = definitions.remove(at: index)
+        let target: Int
+        if item.enabled {
+            // After the last one already on, so it joins the end of the bar
+            // rather than jumping ahead of what was already there.
+            target = definitions.lastIndex(where: \.enabled).map { $0 + 1 } ?? 0
+        } else {
+            target = definitions.firstIndex(where: { !$0.enabled }) ?? definitions.count
+        }
+        definitions.insert(item, at: target)
+    }
     @Published var offerPaste = true { didSet { defaults.set(offerPaste, forKey: "offerPaste") } }
 
     /// Whether to show the menu bar icon. Turning it off hides the only way
@@ -526,21 +573,6 @@ final class ActionStore: ObservableObject {
               kind: .openURL("https://www.instapaper.com/edit?url={text}"), context: .links, enabled: false),
     ]
 
-    /// Built-in symbols that have been replaced, and what they were.
-    ///
-    /// A stored item still carrying the old one is an item nobody has chosen a
-    /// symbol for, so it takes the new one; anything else is left alone,
-    /// because the list is the owner's to edit. Without this the change would
-    /// only ever reach a fresh installation — the whole definition is stored,
-    /// symbol and all.
-    private static let replacedSymbols: [String: String] = [
-        // Scissors are what everyone's Cut is drawn as, and it was wearing the
-        // circled variant because plain scissors were being used for trimming
-        // whitespace — which was a pun rather than a meaning.
-        "cut": "scissors.circle",
-        "trim": "scissors",
-    ]
-
     private func load() {
         guard let data = defaults.data(forKey: key),
               var stored = try? JSONDecoder().decode([ActionDefinition].self, from: data) else {
@@ -584,9 +616,6 @@ final class ActionStore: ObservableObject {
                 stored[index].context = fresh.context
             }
             if def.maxTextLength == nil { stored[index].maxTextLength = fresh.maxTextLength }
-            if let old = Self.replacedSymbols[id], def.symbol == old {
-                stored[index].symbol = fresh.symbol
-            }
         }
 
         // Dropping an item from the catalogue does not remove it from a list
@@ -615,7 +644,7 @@ final class ActionStore: ObservableObject {
         // want of one. Retiring the whole batch on a single flag is safe: an
         // entry whose rename has already happened no longer matches its old
         // glyph and does nothing.
-        let symbolRefreshKey = "symbolRefresh.v2"
+        let symbolRefreshKey = "symbolRefresh.v3"
         if !defaults.bool(forKey: symbolRefreshKey) {
             let renames: [(matches: (ActionDefinition) -> Bool, was: String, now: String)] = [
                 (matches: {
@@ -623,6 +652,17 @@ final class ActionStore: ObservableObject {
                     return false
                 }, was: "safari", now: "link"),
                 (matches: { $0.title == "Claude" }, was: "sparkles", now: "asterisk"),
+                // Scissors are what everyone's Cut is drawn with. They had
+                // been spent on trimming whitespace, which was a pun rather
+                // than a meaning.
+                (matches: {
+                    if case .builtin(let id) = $0.kind { return id == "cut" }
+                    return false
+                }, was: "scissors.circle", now: "scissors"),
+                (matches: {
+                    if case .builtin(let id) = $0.kind { return id == "trim" }
+                    return false
+                }, was: "scissors", now: "text.word.spacing"),
             ]
             for rename in renames {
                 guard let index = stored.firstIndex(where: {
@@ -631,6 +671,17 @@ final class ActionStore: ObservableObject {
                 stored[index].symbol = rename.now
             }
             defaults.set(true, forKey: symbolRefreshKey)
+        }
+
+        // Once: everything switched on to the top, so the handful in use are
+        // not scattered through fifty that are not. A stable partition — the
+        // bar reads this same list in order and takes only what is on, so it
+        // comes out exactly as it was. Once rather than on every launch,
+        // because an order arranged by hand is the owner's to keep.
+        let groupKey = "groupedEnabled.v1"
+        if !defaults.bool(forKey: groupKey) {
+            stored = stored.filter(\.enabled) + stored.filter { !$0.enabled }
+            defaults.set(true, forKey: groupKey)
         }
 
         definitions = stored
