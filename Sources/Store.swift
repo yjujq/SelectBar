@@ -436,7 +436,7 @@ final class ActionStore: ObservableObject {
               kind: .builtin("lower"), context: .editableText, enabled: false),
         .init(title: "Title Case", symbol: "textformat",
               kind: .builtin("title"), context: .editableText, enabled: false),
-        .init(title: "Trim spaces", symbol: "scissors",
+        .init(title: "Trim spaces", symbol: "text.word.spacing",
               kind: .builtin("trim"), context: .editableText, enabled: false),
         .init(title: "Sort lines", symbol: "arrow.up.arrow.down",
               kind: .builtin("sortLines"), context: .editableText, enabled: false),
@@ -457,7 +457,7 @@ final class ActionStore: ObservableObject {
         .init(title: "Message", symbol: "message",
               kind: .openURL("sms:&body={text}"), context: .plainText, enabled: false),
 
-        .init(title: "Cut", symbol: "scissors.circle",
+        .init(title: "Cut", symbol: "scissors",
               kind: .builtin("cut"), context: .editableText, enabled: false),
         .init(title: "Sentence case", symbol: "text.alignleft",
               kind: .builtin("sentence"), context: .editableText, enabled: false),
@@ -522,6 +522,21 @@ final class ActionStore: ObservableObject {
               kind: .openURL("https://www.instapaper.com/edit?url={text}"), context: .links, enabled: false),
     ]
 
+    /// Built-in symbols that have been replaced, and what they were.
+    ///
+    /// A stored item still carrying the old one is an item nobody has chosen a
+    /// symbol for, so it takes the new one; anything else is left alone,
+    /// because the list is the owner's to edit. Without this the change would
+    /// only ever reach a fresh installation — the whole definition is stored,
+    /// symbol and all.
+    private static let replacedSymbols: [String: String] = [
+        // Scissors are what everyone's Cut is drawn as, and it was wearing the
+        // circled variant because plain scissors were being used for trimming
+        // whitespace — which was a pun rather than a meaning.
+        "cut": "scissors.circle",
+        "trim": "scissors",
+    ]
+
     private func load() {
         guard let data = defaults.data(forKey: key),
               var stored = try? JSONDecoder().decode([ActionDefinition].self, from: data) else {
@@ -565,6 +580,9 @@ final class ActionStore: ObservableObject {
                 stored[index].context = fresh.context
             }
             if def.maxTextLength == nil { stored[index].maxTextLength = fresh.maxTextLength }
+            if let old = Self.replacedSymbols[id], def.symbol == old {
+                stored[index].symbol = fresh.symbol
+            }
         }
 
         // Dropping an item from the catalogue does not remove it from a list
