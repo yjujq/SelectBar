@@ -64,6 +64,27 @@ enum ActionContext: String, Codable, CaseIterable, Identifiable {
 }
 
 /// What fills the bar's background.
+extension ActionStore {
+    /// How the app's own windows are offered to screen captures.
+    ///
+    /// `.none` means the window server never hands those pixels to anybody —
+    /// not a screenshot, not a recording, not a call being shared. That is
+    /// needed exactly when the lens is filming, and for one reason: the lens
+    /// films what is behind the bar continuously, so a bar that could be
+    /// captured would film itself, frame after frame, refracting its own
+    /// picture without end. The filter that leaves this application out is
+    /// built from the list of applications with windows on screen, and the
+    /// first time round the bar may not be in that list yet — so the
+    /// exclusion came out empty and the loop closed. This does not depend on
+    /// the list at all.
+    ///
+    /// No other style films anything, and there the bar has no business being
+    /// invisible: a bar nobody can screenshot cannot be shown to anyone.
+    var windowSharing: NSWindow.SharingType {
+        barStyle == .lens ? .none : .readOnly
+    }
+}
+
 enum BarStyle: String, Codable, CaseIterable, Identifiable {
     case solid, glass, glassClear, blur, lens
     var id: String { rawValue }

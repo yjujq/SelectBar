@@ -71,15 +71,9 @@ final class PopupController {
         // rims the capsule visibly — the backing view draws nothing itself,
         // borderWidth is 0 throughout its layer tree.
         panel.hasShadow = ActionStore.shared.barStyle == .solid
-        // Kept out of every screen capture, our own included. The lens films
-        // what is behind the bar, and the filter that excludes this
-        // application is built from the list of applications with windows on
-        // screen — a list this panel may not be in yet, the first time round,
-        // because it is still being put together. The exclusion then came out
-        // empty and the bar filmed itself, refracting its own picture over and
-        // over. This does not depend on any of that: the window server simply
-        // never hands these pixels to a capture.
-        panel.sharingType = .none
+        // Kept out of every screen capture while the lens is filming, and
+        // offered to them in every other style. See `windowSharing`.
+        panel.sharingType = ActionStore.shared.windowSharing
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.appearance = appearance(for: ActionStore.shared)
         panel.contentView = content

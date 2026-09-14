@@ -683,9 +683,6 @@ final class SettingsWindowController {
             // Without a title bar there is nothing to drag, so the background
             // itself moves the window, and Escape stands in for the close box.
             w.isMovableByWindowBackground = true
-            // As with the panels: the preview inside is a lens, and must not
-            // be shown the window it is standing in.
-            w.sharingType = .none
             w.center()
             window = w
 
@@ -695,6 +692,10 @@ final class SettingsWindowController {
                 return nil
             }
         }
+        // As with the panels, and settled on every showing rather than once:
+        // the preview inside is a lens when the bar is, and must not be shown
+        // the window it is standing in. The window outlives a change of style.
+        window?.sharingType = ActionStore.shared.windowSharing
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
