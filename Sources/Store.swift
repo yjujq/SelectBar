@@ -547,6 +547,8 @@ final class ActionStore: ObservableObject {
               kind: .builtin("urlEncode"), context: .editableText, enabled: false),
         .init(title: "Base64", symbol: "shippingbox",
               kind: .builtin("base64"), context: .editableText, enabled: false),
+        .init(title: "Calculate", symbol: "equal.square",
+              kind: .builtin("calc"), context: .editableText, enabled: false),
 
         // --- Dictionaries ---
         // dict:// opens the system Dictionary with no intermediary.
@@ -748,7 +750,7 @@ final class ActionStore: ObservableObject {
         let clip = wantsClipboard ? clipboardPreview() : nil
         return definitions
             .filter { def in
-                guard def.enabled else { return false }
+                guard def.enabled, Self.canBeOpened(def) else { return false }
                 // Paste fits anywhere typing is allowed: in an empty field it
                 // simply pastes, over a selection it replaces it.
                 if def.context == .emptyField { return editable && clip != nil }
@@ -762,6 +764,30 @@ final class ActionStore: ObservableObject {
             .compactMap { def in
                 runtime(def, tooltipSuffix: def.context == .emptyField ? clip : nil)
             }
+    }
+
+    /// Whether anything on this machine can open what an item points at.
+    ///
+    /// A handful of items address an application directly — bear://,
+    /// things://, obsidian:// — and on a machine without that application they
+    /// are buttons that do nothing whatever. Nothing reports the failure
+    /// either: the open is handed to the system and the system shrugs. Better
+    /// to leave them out of the bar, and leave them in the list so that
+    /// installing the application is all it takes.
+    ///
+    /// Only the direct ones are asked about. A web address always has
+    /// something to open it, and asking would be a launch-services lookup per
+    /// item per showing for an answer that is always yes.
+    private static var openers: [String: Bool] = [:]
+    private static func canBeOpened(_ def: ActionDefinition) -> Bool {
+        guard case .openURL(let template) = def.kind else { return true }
+        guard let url = URL(string: template.replacingOccurrences(of: "{text}", with: "x")),
+              let scheme = url.scheme?.lowercased() else { return false }
+        if scheme == "http" || scheme == "https" { return true }
+        if let known = openers[scheme] { return known }
+        let found = NSWorkspace.shared.urlForApplication(toOpen: url) != nil
+        openers[scheme] = found
+        return found
     }
 
     /// The start of the pasteboard contents, for the paste button's tooltip.

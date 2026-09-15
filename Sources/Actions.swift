@@ -151,6 +151,109 @@ struct Action {
             .joined(separator: " ")
     }
 
+    /// Works out a selected sum: + - * / and brackets, and nothing else.
+    ///
+    /// Written out rather than handed to `NSExpression`, which is the obvious
+    /// way and the wrong one twice over. It parses far more than arithmetic —
+    /// it will call selectors named in the text it is given, and this text
+    /// comes from whatever page the selection was made on — and it raises an
+    /// Objective-C exception on anything malformed, which `try?` does not
+    /// catch, so a selection ending in a stray "+" would take the app down.
+    ///
+    /// Returns nothing for anything that is not a sum, and the bar then does
+    /// nothing at all, which is the right answer for a selected paragraph.
+    static func arithmetic(_ text: String) -> String? {
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        // As they are actually written down: typographic operators, and a
+        // comma standing in for either separator depending on the company it
+        // keeps — a decimal point where there is no point of its own, a
+        // thousands separator where there is.
+        t = t.replacingOccurrences(of: "\u{00D7}", with: "*")
+             .replacingOccurrences(of: "\u{00F7}", with: "/")
+             .replacingOccurrences(of: "\u{2212}", with: "-")
+        t = t.contains(".")
+            ? t.replacingOccurrences(of: ",", with: "")
+            : t.replacingOccurrences(of: ",", with: ".")
+
+        var reader = Calculator(t)
+        guard let value = reader.parse(), value.isFinite else { return nil }
+
+        let format = NumberFormatter()
+        format.numberStyle = .decimal
+        format.usesGroupingSeparator = false
+        format.maximumFractionDigits = 10
+        format.locale = Locale(identifier: "en_US_POSIX")
+        return format.string(from: NSNumber(value: value))
+    }
+
+    /// Recursive descent, so precedence and brackets come out of the shape of
+    /// it rather than out of a table.
+    private struct Calculator {
+        private let chars: [Character]
+        private var at = 0
+        init(_ text: String) { chars = Array(text) }
+
+        mutating func parse() -> Double? {
+            guard let value = sum() else { return nil }
+            skipBlanks()
+            // Anything left over means this was never a sum in the first
+            // place — "2 apples" must not come back as 2.
+            return at == chars.count ? value : nil
+        }
+
+        private mutating func skipBlanks() {
+            while at < chars.count, chars[at].isWhitespace { at += 1 }
+        }
+
+        private mutating func sum() -> Double? {
+            guard var left = product() else { return nil }
+            while true {
+                skipBlanks()
+                guard at < chars.count, chars[at] == "+" || chars[at] == "-" else { return left }
+                let op = chars[at]; at += 1
+                guard let right = product() else { return nil }
+                left = op == "+" ? left + right : left - right
+            }
+        }
+
+        private mutating func product() -> Double? {
+            guard var left = value() else { return nil }
+            while true {
+                skipBlanks()
+                guard at < chars.count, chars[at] == "*" || chars[at] == "/" else { return left }
+                let op = chars[at]; at += 1
+                guard let right = value() else { return nil }
+                if op == "/" {
+                    guard right != 0 else { return nil }
+                    left /= right
+                } else {
+                    left *= right
+                }
+            }
+        }
+
+        private mutating func value() -> Double? {
+            skipBlanks()
+            guard at < chars.count else { return nil }
+            if chars[at] == "-" { at += 1; return value().map { -$0 } }
+            if chars[at] == "+" { at += 1; return value() }
+            if chars[at] == "(" {
+                at += 1
+                guard let inner = sum() else { return nil }
+                skipBlanks()
+                guard at < chars.count, chars[at] == ")" else { return nil }
+                at += 1
+                return inner
+            }
+            var digits = ""
+            while at < chars.count, chars[at].isNumber || chars[at] == "." {
+                digits.append(chars[at]); at += 1
+            }
+            return digits.isEmpty ? nil : Double(digits)
+        }
+    }
+
     static func builtinRun(_ id: String) -> ((String) -> Void)? {
         switch id {
         case "copy":
@@ -182,6 +285,12 @@ struct Action {
             }
         case "paste":
             return { _ in pressCommand(key: 9) }   // 9 = V
+
+        case "calc":
+            return { text in
+                guard let answer = arithmetic(text) else { return }
+                replaceSelection(with: answer)
+            }
 
         case "selectAll":
             // The bar never takes focus, so this lands in the field the
