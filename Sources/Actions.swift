@@ -254,6 +254,27 @@ struct Action {
         }
     }
 
+    /// Hands the selection to one of the system's own services — the same
+    /// list that fills the Services submenu of every context menu, and the
+    /// reason these need no code of their own beyond a name.
+    ///
+    /// Onto a pasteboard of ours rather than the general one. A service reads
+    /// whatever board it is handed, and handing it the clipboard would mean
+    /// every look-up quietly overwrote what the owner had copied.
+    ///
+    /// The names are the ones the system has registered, checked against its
+    /// own list rather than remembered. A name it does not know comes back
+    /// false and nothing happens, which is what a missing application looks
+    /// like from here.
+    static func service(_ name: String, text: String) {
+        let board = NSPasteboard(name: NSPasteboard.Name("SelectBarService"))
+        board.clearContents()
+        board.setString(text, forType: .string)
+        if !NSPerformService(name, board) {
+            NSLog("SelectBar: the system does not know the service “\(name)”")
+        }
+    }
+
     static func builtinRun(_ id: String) -> ((String) -> Void)? {
         switch id {
         case "copy":
@@ -285,6 +306,23 @@ struct Action {
             }
         case "paste":
             return { _ in pressCommand(key: 9) }   // 9 = V
+
+        // The system's own, by name. Every one of these is a line because
+        // macOS already wrote the rest of it.
+        case "lookUp":
+            return { service("Look Up in Dictionary", text: $0) }
+        case "sticky":
+            return { service("Make Sticky", text: $0) }
+        case "readingList":
+            return { service("Add to Reading List", text: $0) }
+        case "mailSelection":
+            return { service("Mail/New Email With Selection", text: $0) }
+        case "textEdit":
+            return { service("New TextEdit Window Containing Selection", text: $0) }
+        case "showMap":
+            return { service("Show Map", text: $0) }
+        case "summarize":
+            return { service("Summarize", text: $0) }
 
         case "calc":
             return { text in

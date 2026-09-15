@@ -550,6 +550,25 @@ final class ActionStore: ObservableObject {
         .init(title: "Calculate", symbol: "equal.square",
               kind: .builtin("calc"), context: .editableText, enabled: false),
 
+        // --- The system's own services ---
+        // What fills the Services submenu of every context menu on the
+        // machine. Nothing here is reimplemented: each is the name macOS has
+        // registered, handed back to it with the selection on a pasteboard.
+        .init(title: "Look Up", symbol: "character.book.closed",
+              kind: .builtin("lookUp"), context: .anyText, enabled: false),
+        .init(title: "Summarize", symbol: "text.quote",
+              kind: .builtin("summarize"), context: .plainText, enabled: false),
+        .init(title: "New Sticky", symbol: "note.text",
+              kind: .builtin("sticky"), context: .anyText, enabled: false),
+        .init(title: "New Email", symbol: "envelope.open",
+              kind: .builtin("mailSelection"), context: .anyText, enabled: false),
+        .init(title: "Open in TextEdit", symbol: "doc.richtext",
+              kind: .builtin("textEdit"), context: .anyText, enabled: false),
+        .init(title: "Show Map", symbol: "map",
+              kind: .builtin("showMap"), context: .plainText, enabled: false),
+        .init(title: "Reading List", symbol: "list.star",
+              kind: .builtin("readingList"), context: .links, enabled: false),
+
         // --- Dictionaries ---
         // dict:// opens the system Dictionary with no intermediary.
         .init(title: "Apple Dictionary", symbol: "character.book.closed.fill",
