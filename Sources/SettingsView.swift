@@ -192,6 +192,13 @@ struct SettingsView: View {
                     Segmented(options: BarStyle.allCases.map { ($0, shortTitle($0)) },
                               selection: $store.barStyle)
                 }
+                SettingRow(title: "Shows") {
+                    Segmented(options: BarAnchor.allCases.map { ($0, $0.title) },
+                              selection: $store.barAnchor)
+                }
+                if store.barAnchor == .selection {
+                    HintText(text: "Centred over the selected text, whichever way it was dragged. Where an application will not say where its text is, the pointer stands in.")
+                }
                 SettingRow(title: "Theme") {
                     Segmented(options: BarAppearance.allCases.map { ($0, $0.title) },
                               selection: $store.barAppearance)

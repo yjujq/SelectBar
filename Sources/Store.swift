@@ -285,6 +285,22 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
 }
 
 /// A light or dark bar, independent of the system.
+/// What the bar is put beside.
+enum BarAnchor: String, Codable, CaseIterable, Identifiable {
+    /// Where the pointer let go — which is one end of the selection, and
+    /// wherever the hand happened to finish.
+    case pointer
+    /// Centred over the selection itself, whichever way it was dragged.
+    case selection
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .pointer:   return "Pointer"
+        case .selection: return "Selection"
+        }
+    }
+}
+
 enum BarAppearance: String, Codable, CaseIterable, Identifiable {
     case system, light, dark, auto
     var id: String { rawValue }
@@ -427,6 +443,7 @@ final class ActionStore: ObservableObject {
     /// backdrop and the buttons are siblings, not nested.
     @Published var barOpacity: Double = 0.85 { didSet { defaults.set(barOpacity, forKey: "barOpacity") } }
     @Published var barStyle: BarStyle = .glass { didSet { defaults.set(barStyle.rawValue, forKey: "barStyle") } }
+    @Published var barAnchor: BarAnchor = .pointer { didSet { defaults.set(barAnchor.rawValue, forKey: "barAnchor") } }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
     @Published var barLens: BarLens = .system { didSet { defaults.set(barLens.rawValue, forKey: "barLens") } }
     /// The background tint as sRGB components. nil means no tint.
@@ -445,6 +462,7 @@ final class ActionStore: ObservableObject {
         barScale = defaults.object(forKey: "barScale") as? Double ?? 1.0
         barOpacity = defaults.object(forKey: "barOpacity") as? Double ?? 0.85
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
+        barAnchor = (defaults.string(forKey: "barAnchor").flatMap(BarAnchor.init)) ?? .pointer
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
         barLens = (defaults.string(forKey: "barLens").flatMap(BarLens.init)) ?? .system
         barTint = defaults.array(forKey: "barTint") as? [Double]

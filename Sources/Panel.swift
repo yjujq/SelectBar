@@ -41,7 +41,7 @@ final class PopupController {
         let content = buildBar(actions: actions)
         let size = content.fittingSize
 
-        let origin = position(size: size, cursor: fallbackPoint)
+        let origin = position(size: size, cursor: anchor(rect: rect, pointer: fallbackPoint))
         let panel = NonActivatingPanel(
             contentRect: NSRect(origin: origin, size: size),
             styleMask: [.nonactivatingPanel, .borderless],
@@ -683,6 +683,28 @@ private final class HoverButton: NSButton {
     /// way it is always where the eye is and does not jump across the screen
     /// after a long selection whose start may be far from where the mouse was
     /// released.
+    /// The point the bar is hung from.
+    ///
+    /// The pointer is where the hand finished, which is one end of the
+    /// selection and not always the end anyone is looking at — drag a
+    /// paragraph upwards and the bar lands at the top of it, over the text
+    /// just read. Centred on the selection it lands in the same place
+    /// whichever way the drag went.
+    ///
+    /// The selection's rectangle comes from Accessibility and is not always
+    /// there to be had: some applications will not say where their text is,
+    /// and some report an empty rectangle for a selection they do have. The
+    /// pointer is always known, so it stands in.
+    private func anchor(rect: NSRect?, pointer: NSPoint) -> NSPoint {
+        guard ActionStore.shared.barAnchor == .selection,
+              let rect, rect.width > 0 || rect.height > 0
+        else { return pointer }
+        // The top edge, so the bar sits above the selection rather than over
+        // the middle of it; `position` does the rest and flips it below when
+        // there is no room above.
+        return NSPoint(x: rect.midX, y: rect.maxY)
+    }
+
     private func position(size: NSSize, cursor: NSPoint) -> NSPoint {
         let gap: CGFloat = 14
         var origin = NSPoint(x: cursor.x - size.width / 2, y: cursor.y + gap)
