@@ -331,8 +331,18 @@ enum ScreenPhoto {
         let local = CGRect(x: rect.minX - screen.frame.minX,
                            y: screen.frame.maxY - rect.maxY,
                            width: rect.width, height: rect.height)
+        // The shape of the region, not a fixed one. The capture fits the
+        // region into whatever size is asked for without stretching it, and
+        // fills what is left over with black — so a bar of any other
+        // proportion than the size asked for was measured together with a
+        // black margin, and came out dark whatever it was standing on. A bar
+        // is around 52 by 44 with one action in it; against a fixed 24 by 8
+        // that margin was well over half the picture.
+        let across = 24.0
+        let down = max(1.0, (across * local.height / max(local.width, 1)).rounded())
         guard let image = await take(of: local, on: screen,
-                                     sized: CGSize(width: 24, height: 8)) else { return nil }
+                                     sized: CGSize(width: across, height: down))
+        else { return nil }
         return meanLuminance(of: image).map { $0 < 0.5 }
     }
 
@@ -340,12 +350,25 @@ enum ScreenPhoto {
         let w = image.width, h = image.height
         guard w > 0, h > 0 else { return nil }
         var bytes = [UInt8](repeating: 0, count: w * 4 * h)
-        guard let ctx = CGContext(data: &bytes, width: w, height: h, bitsPerComponent: 8,
-                                  bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-                                            | CGBitmapInfo.byteOrder32Little.rawValue)
-        else { return nil }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        // Inside the closure, all of it. `&bytes` lends the array's storage
+        // for the length of the call it is written in and no longer — and the
+        // drawing happens on the line after, by which time the context may be
+        // writing somewhere else entirely. It reads as a screen that is always
+        // dark, because what is measured is a buffer that stayed zero; and it
+        // is intermittent, because whether the storage is still there is a
+        // matter of what the allocator did next. Two readings of the same
+        // white screen, a second apart, came back light and dark.
+        let drawn = bytes.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(data: raw.baseAddress, width: w, height: h,
+                                      bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                                | CGBitmapInfo.byteOrder32Little.rawValue)
+            else { return false }
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return nil }
 
         var total = 0.0
         for i in stride(from: 0, to: bytes.count, by: 4) {
