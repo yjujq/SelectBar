@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var focusWatchers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+
         applyStatusIconVisibility()
         NotificationCenter.default.addObserver(
             forName: .statusIconVisibilityChanged, object: nil, queue: .main

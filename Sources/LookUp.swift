@@ -33,7 +33,8 @@ enum LookUp {
 
         let at = NSEvent.mouseLocation
         let window = Host(contentRect: NSRect(x: at.x, y: at.y, width: 1, height: 1),
-                          styleMask: [.borderless], backing: .buffered, defer: false)
+                          styleMask: [.nonactivatingPanel, .borderless],
+                          backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -45,17 +46,57 @@ enum LookUp {
         host = window
 
         // The panel will not open for a window that cannot take the keyboard,
-        // and a window cannot take it while its application is behind
-        // everybody else. So this one comes forward — and goes away again the
-        // moment anything else is clicked, which is also when the panel goes.
-        NSApp.activate()
-        anchor.showDefinition(for: NSAttributedString(string: word),
-                              at: NSPoint(x: 0, y: 0))
+        // and this is the only way to take it here.
+        //
+        // Coming forward was the obvious way and it does not work. The bar is
+        // a non-activating panel that never becomes key, so clicking it never
+        // makes this application active; and since macOS 14 an application
+        // that is not active, and that nobody has interacted with, is refused
+        // when it asks to become so. Traced inside the running app: twenty
+        // attempts over four hundred milliseconds, active false and key false
+        // throughout, and a panel told to open for a window that was not key
+        // opens into nothing at all — which is exactly what a button that
+        // does nothing looks like.
+        //
+        // A non-activating panel takes key status without its application
+        // going anywhere, which is what the bar itself is built from. The
+        // application in front stays in front and stays frontmost.
+        wait(for: window) {
+            anchor.showDefinition(for: NSAttributedString(string: word),
+                                  at: NSPoint(x: 0, y: 0))
+            // Only now is the click that dismisses it worth watching for.
+            // Coming forward is itself a resignation or two — the bar closing
+            // hands focus back for a moment — and watching through that shut
+            // the panel before anyone saw it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { watchForDismissal() }
+        }
+    }
 
+    /// Runs the block once the window has the keyboard, or gives up.
+    ///
+    /// Polled rather than waited on a notification: `didBecomeActive` arrives
+    /// before the window has actually been made key, which is the state that
+    /// matters here.
+    private static func wait(for window: NSWindow, attempt: Int = 0,
+                             then act: @escaping () -> Void) {
+        window.makeKeyAndOrderFront(nil)
+        if window.isKeyWindow || attempt >= 20 {
+            act()
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+            MainActor.assumeIsolated { wait(for: window, attempt: attempt + 1, then: act) }
+        }
+    }
+
+    private static func watchForDismissal() {
+        guard host != nil, dismissal == nil else { return }
         dismissal = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
         ) { _ in
-            MainActor.assumeIsolated { close() }
+            MainActor.assumeIsolated {
+                close()
+            }
         }
     }
 
@@ -69,8 +110,8 @@ enum LookUp {
     }
 
     /// Borderless windows are never key, and without the keyboard there is no
-    /// panel.
-    private final class Host: NSWindow {
+    /// panel. A panel says so for itself.
+    private final class Host: NSPanel {
         override var canBecomeKey: Bool { true }
     }
 }
