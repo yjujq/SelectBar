@@ -323,7 +323,16 @@ struct Action {
         case "textEdit":
             return { service("New TextEdit Window Containing Selection", text: $0) }
         case "showMap":
-            return { service("Show Map", text: $0) }
+            // Maps' own address, not the "Show Map" service. The service is an
+            // Automator workflow that takes the selection and shows nothing
+            // for anything it does not care to recognise, with no way to tell
+            // that from a map that simply has not opened yet. An address with
+            // a query in it always searches.
+            //
+            // The maps:// form rather than the http one: the latter is handled
+            // by whatever opens web pages, which on this machine is a browser,
+            // and a map action that opens a browser tab is not a map action.
+            return { text in open("maps://?q=" + urlEncoded(text)) }
         case "summarize":
             return { service("Summarize", text: $0) }
 
