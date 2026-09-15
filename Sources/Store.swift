@@ -563,7 +563,10 @@ final class ActionStore: ObservableObject {
               kind: .builtin("sticky"), context: .anyText, enabled: false),
         .init(title: "New Email", symbol: "envelope.open",
               kind: .builtin("mailSelection"), context: .anyText, enabled: false),
-        .init(title: "Open in TextEdit", symbol: "doc.richtext",
+        // Not a document glyph: beside Look Up's closed book it was one more
+        // small rectangle with lines in it, and the two sat four apart in a
+        // row of fourteen.
+        .init(title: "Open in TextEdit", symbol: "square.and.pencil",
               kind: .builtin("textEdit"), context: .anyText, enabled: false),
         .init(title: "Show Map", symbol: "map",
               kind: .builtin("showMap"), context: .plainText, enabled: false),
@@ -687,7 +690,7 @@ final class ActionStore: ObservableObject {
         // want of one. Retiring the whole batch on a single flag is safe: an
         // entry whose rename has already happened no longer matches its old
         // glyph and does nothing.
-        let symbolRefreshKey = "symbolRefresh.v3"
+        let symbolRefreshKey = "symbolRefresh.v4"
         if !defaults.bool(forKey: symbolRefreshKey) {
             let renames: [(matches: (ActionDefinition) -> Bool, was: String, now: String)] = [
                 (matches: {
@@ -706,6 +709,10 @@ final class ActionStore: ObservableObject {
                     if case .builtin(let id) = $0.kind { return id == "trim" }
                     return false
                 }, was: "scissors", now: "text.word.spacing"),
+                (matches: {
+                    if case .builtin(let id) = $0.kind { return id == "textEdit" }
+                    return false
+                }, was: "doc.richtext", now: "square.and.pencil"),
             ]
             for rename in renames {
                 guard let index = stored.firstIndex(where: {
