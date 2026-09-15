@@ -310,7 +310,10 @@ struct Action {
         // The system's own, by name. Every one of these is a line because
         // macOS already wrote the rest of it.
         case "lookUp":
-            return { service("Look Up in Dictionary", text: $0) }
+            // A beat, so the bar is gone before the panel takes its place.
+            return { text in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { LookUp.show(text) }
+            }
         case "sticky":
             return { service("Make Sticky", text: $0) }
         case "readingList":

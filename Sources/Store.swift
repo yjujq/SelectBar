@@ -554,6 +554,7 @@ final class ActionStore: ObservableObject {
         // What fills the Services submenu of every context menu on the
         // machine. Nothing here is reimplemented: each is the name macOS has
         // registered, handed back to it with the selection on a pasteboard.
+        // The panel from a three-finger tap, not the Dictionary application.
         .init(title: "Look Up", symbol: "character.book.closed",
               kind: .builtin("lookUp"), context: .anyText, enabled: false),
         .init(title: "Summarize", symbol: "text.quote",
