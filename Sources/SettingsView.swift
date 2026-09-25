@@ -192,6 +192,9 @@ struct SettingsView: View {
                     Segmented(options: BarStyle.allCases.map { ($0, shortTitle($0)) },
                               selection: $store.barStyle)
                 }
+                SettingRow(title: "Tap when it appears",
+                           subtitle: "A single click of the trackpad under the finger as the bar arrives. Trackpads without a haptic engine feel nothing.",
+                           toggle: $store.hapticOnShow)
                 SettingRow(title: "Shows") {
                     Segmented(options: BarAnchor.allCases.map { ($0, $0.title) },
                               selection: $store.barAnchor)

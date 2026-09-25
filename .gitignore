@@ -12,3 +12,6 @@ Tools/makeicon
 
 .DS_Store
 DerivedData/
+
+# Случайный клон этого же репозитория, лежащий внутри него
+SelectBar/

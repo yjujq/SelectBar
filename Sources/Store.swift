@@ -444,6 +444,8 @@ final class ActionStore: ObservableObject {
     @Published var barOpacity: Double = 0.85 { didSet { defaults.set(barOpacity, forKey: "barOpacity") } }
     @Published var barStyle: BarStyle = .glass { didSet { defaults.set(barStyle.rawValue, forKey: "barStyle") } }
     @Published var barAnchor: BarAnchor = .pointer { didSet { defaults.set(barAnchor.rawValue, forKey: "barAnchor") } }
+    /// A tap of the trackpad as the bar arrives.
+    @Published var hapticOnShow = true { didSet { defaults.set(hapticOnShow, forKey: "hapticOnShow") } }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
     @Published var barLens: BarLens = .system { didSet { defaults.set(barLens.rawValue, forKey: "barLens") } }
     /// The background tint as sRGB components. nil means no tint.
@@ -463,6 +465,7 @@ final class ActionStore: ObservableObject {
         barOpacity = defaults.object(forKey: "barOpacity") as? Double ?? 0.85
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAnchor = (defaults.string(forKey: "barAnchor").flatMap(BarAnchor.init)) ?? .pointer
+        hapticOnShow = defaults.object(forKey: "hapticOnShow") as? Bool ?? true
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
         barLens = (defaults.string(forKey: "barLens").flatMap(BarLens.init)) ?? .system
         barTint = defaults.array(forKey: "barTint") as? [Double]
