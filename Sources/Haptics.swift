@@ -18,19 +18,17 @@ import AppKit
 @MainActor
 enum Haptics {
 
-    /// Which of the engine's patterns to fire.
-    ///
-    /// Fifteen is the crisp single tap, the one the system uses when
-    /// something snaps into place. One through six run from light to firm if
-    /// that turns out to be too much or too little.
-    private static let pattern: Int32 = 15
-
-    static func tap() {
-        if let actuator = engine {
+    static func tap(_ strength: HapticStrength = .strong) {
+        // Twice, if the first is refused: an actuator opened at launch can be
+        // stale by the time the bar first appears, and reopening costs a round
+        // trip to the driver only on the attempt that failed.
+        for attempt in 0...1 {
+            if attempt == 1 { reopen() }
+            guard let actuator = engine, let actuate else { continue }
             // A second argument of zero, and two floats of zero: the
             // parameters are undocumented and every known caller passes
             // nothing in them.
-            if actuate?(actuator, pattern, 0, 0, 0) == 0 { return }
+            if actuate(actuator, strength.pattern, 0, 0, 0) == 0 { return }
         }
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
@@ -49,7 +47,16 @@ enum Haptics {
 
     /// Opened once and kept. Opening it costs a round trip to the driver, and
     /// the bar can appear many times a minute.
-    private static let engine: UnsafeMutableRawPointer? = open()
+    private static var opened = false
+    private static var engine: UnsafeMutableRawPointer? {
+        if !opened { opened = true; handle = open() }
+        return handle
+    }
+    private static var handle: UnsafeMutableRawPointer?
+
+    private static func reopen() {
+        handle = open()
+    }
 
     private static func open() -> UnsafeMutableRawPointer? {
         let path = "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"

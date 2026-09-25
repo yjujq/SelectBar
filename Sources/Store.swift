@@ -285,6 +285,32 @@ enum BarLens: String, Codable, CaseIterable, Identifiable {
 }
 
 /// A light or dark bar, independent of the system.
+/// How hard the trackpad taps when the bar arrives.
+enum HapticStrength: String, Codable, CaseIterable, Identifiable {
+    case light, medium, strong
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .light:  return "Light"
+        case .medium: return "Medium"
+        case .strong: return "Strong"
+        }
+    }
+
+    /// The engine's own pattern numbers. Fifteen — the crisp one the system
+    /// uses for snapping — was the first choice and went unfelt: the bar
+    /// arrives with a finger still resting on the trackpad from the drag that
+    /// made the selection, and a subtle tap under a resting finger is no tap
+    /// at all.
+    var pattern: Int32 {
+        switch self {
+        case .light:  return 1
+        case .medium: return 3
+        case .strong: return 6
+        }
+    }
+}
+
 /// What the bar is put beside.
 enum BarAnchor: String, Codable, CaseIterable, Identifiable {
     /// Where the pointer let go — which is one end of the selection, and
@@ -446,6 +472,9 @@ final class ActionStore: ObservableObject {
     @Published var barAnchor: BarAnchor = .pointer { didSet { defaults.set(barAnchor.rawValue, forKey: "barAnchor") } }
     /// A tap of the trackpad as the bar arrives.
     @Published var hapticOnShow = true { didSet { defaults.set(hapticOnShow, forKey: "hapticOnShow") } }
+    @Published var hapticStrength: HapticStrength = .strong {
+        didSet { defaults.set(hapticStrength.rawValue, forKey: "hapticStrength") }
+    }
     @Published var barAppearance: BarAppearance = .system { didSet { defaults.set(barAppearance.rawValue, forKey: "barAppearance") } }
     @Published var barLens: BarLens = .system { didSet { defaults.set(barLens.rawValue, forKey: "barLens") } }
     /// The background tint as sRGB components. nil means no tint.
@@ -466,6 +495,8 @@ final class ActionStore: ObservableObject {
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAnchor = (defaults.string(forKey: "barAnchor").flatMap(BarAnchor.init)) ?? .pointer
         hapticOnShow = defaults.object(forKey: "hapticOnShow") as? Bool ?? true
+        hapticStrength = (defaults.string(forKey: "hapticStrength")
+            .flatMap(HapticStrength.init)) ?? .strong
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system
         barLens = (defaults.string(forKey: "barLens").flatMap(BarLens.init)) ?? .system
         barTint = defaults.array(forKey: "barTint") as? [Double]

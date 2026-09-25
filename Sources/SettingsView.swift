@@ -193,8 +193,14 @@ struct SettingsView: View {
                               selection: $store.barStyle)
                 }
                 SettingRow(title: "Tap when it appears",
-                           subtitle: "A single click of the trackpad under the finger as the bar arrives. Trackpads without a haptic engine feel nothing.",
+                           subtitle: "A click of the trackpad under the finger as the bar arrives. Trackpads without a haptic engine feel nothing.",
                            toggle: $store.hapticOnShow)
+                if store.hapticOnShow {
+                    SettingRow(title: "Strength") {
+                        Segmented(options: HapticStrength.allCases.map { ($0, $0.title) },
+                                  selection: $store.hapticStrength)
+                    }
+                }
                 SettingRow(title: "Shows") {
                     Segmented(options: BarAnchor.allCases.map { ($0, $0.title) },
                               selection: $store.barAnchor)
