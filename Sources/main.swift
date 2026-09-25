@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 
 
+
         applyStatusIconVisibility()
         NotificationCenter.default.addObserver(
             forName: .statusIconVisibilityChanged, object: nil, queue: .main

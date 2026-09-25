@@ -87,9 +87,7 @@ final class PopupController {
         // the system uses when something snaps into place, which is what this
         // is. Nothing at all happens on a trackpad without a haptic engine, or
         // on a mouse, and nothing needs to be asked about first.
-        if ActionStore.shared.hapticOnShow {
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-        }
+        if ActionStore.shared.hapticOnShow { Haptics.tap() }
         self.panel = panel
 
         // Auto has to look at the screen, and looking is not instant. The bar
