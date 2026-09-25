@@ -472,6 +472,8 @@ final class ActionStore: ObservableObject {
     @Published var barAnchor: BarAnchor = .pointer { didSet { defaults.set(barAnchor.rawValue, forKey: "barAnchor") } }
     /// A tap of the trackpad as the bar arrives.
     @Published var hapticOnShow = true { didSet { defaults.set(hapticOnShow, forKey: "hapticOnShow") } }
+    /// And one as the pointer crosses onto an action.
+    @Published var hapticOnHover = true { didSet { defaults.set(hapticOnHover, forKey: "hapticOnHover") } }
     @Published var hapticStrength: HapticStrength = .strong {
         didSet { defaults.set(hapticStrength.rawValue, forKey: "hapticStrength") }
     }
@@ -495,6 +497,7 @@ final class ActionStore: ObservableObject {
         barStyle = (defaults.string(forKey: "barStyle").flatMap(BarStyle.init)) ?? .glass
         barAnchor = (defaults.string(forKey: "barAnchor").flatMap(BarAnchor.init)) ?? .pointer
         hapticOnShow = defaults.object(forKey: "hapticOnShow") as? Bool ?? true
+        hapticOnHover = defaults.object(forKey: "hapticOnHover") as? Bool ?? true
         hapticStrength = (defaults.string(forKey: "hapticStrength")
             .flatMap(HapticStrength.init)) ?? .strong
         barAppearance = (defaults.string(forKey: "barAppearance").flatMap(BarAppearance.init)) ?? .system

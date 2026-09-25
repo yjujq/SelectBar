@@ -18,7 +18,21 @@ import AppKit
 @MainActor
 enum Haptics {
 
+    /// The shortest gap between two taps that is worth having.
+    ///
+    /// A flick along the bar crosses every action in a few milliseconds, and
+    /// eight firm taps in that time is a buzz rather than an answer. Sixty
+    /// milliseconds is far below a deliberate crossing and far above a flick,
+    /// and it also merges the tap for the bar arriving with the one for the
+    /// action it arrives under.
+    private static let quietFor: TimeInterval = 0.06
+    private static var lastTap = Date.distantPast
+
     static func tap(_ strength: HapticStrength = .strong) {
+        let now = Date()
+        guard now.timeIntervalSince(lastTap) >= quietFor else { return }
+        lastTap = now
+
         // Twice, if the first is refused: an actuator opened at launch can be
         // stale by the time the bar first appears, and reopening costs a round
         // trip to the driver only on the attempt that failed.

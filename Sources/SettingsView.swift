@@ -195,7 +195,10 @@ struct SettingsView: View {
                 SettingRow(title: "Tap when it appears",
                            subtitle: "A click of the trackpad under the finger as the bar arrives. Trackpads without a haptic engine feel nothing.",
                            toggle: $store.hapticOnShow)
-                if store.hapticOnShow {
+                SettingRow(title: "Tap on each action",
+                           subtitle: "As the pointer crosses onto an action. Sweeping the bar then counts the actions under the finger without looking.",
+                           toggle: $store.hapticOnHover)
+                if store.hapticOnShow || store.hapticOnHover {
                     SettingRow(title: "Strength") {
                         Segmented(options: HapticStrength.allCases.map { ($0, $0.title) },
                                   selection: $store.hapticStrength)

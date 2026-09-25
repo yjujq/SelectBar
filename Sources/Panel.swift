@@ -540,7 +540,17 @@ private final class HoverButton: NSButton {
         area = fresh
     }
 
-    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        // Only on the way in, and only once: sweeping along the bar taps once
+        // per action crossed, which is the point — it counts the actions under
+        // the finger without looking. Leaving says nothing, or every crossing
+        // would tap twice.
+        if ActionStore.shared.hapticOnHover {
+            Haptics.tap(ActionStore.shared.hapticStrength)
+        }
+    }
+
     override func mouseExited(with event: NSEvent) { hovered = false }
 
     override func layout() {
