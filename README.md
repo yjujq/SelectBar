@@ -10,7 +10,18 @@ Select text in any app and the actions you need appear right next to the cursor.
 - 57 actions to choose from — text changes (UPPERCASE, Title Case, sort lines, Base64…), search sites, dictionaries, translators, Notes, Reminders, Things, Todoist and more. Seven are on to begin with.
 - Add your own: open any URL with the selected text in it, or run a shell command.
 - Make it yours: size, opacity, tint, light / dark / auto theme, and Solid, Glass, Blur or Lens styles.
+- Optional trackpad taps as the bar appears and as the pointer crosses each action — Light, Medium or Strong.
 - Stays out of the way: it never takes focus, ignores single clicks and password fields, and lives in the menu bar with no Dock icon.
+
+## Manual
+
+<img src="docs/bar.png" width="520" alt="The bar next to the pointer over selected text">
+
+1. **Select text** in any app and let go of the mouse — the bar appears right by the pointer.
+2. **Click an action.** Any click elsewhere, or a new selection, puts the bar away.
+3. **Click the menu bar icon** for settings: **Actions** turns actions on and off and adds your own; **Appearance** sets the size, style, theme, refraction and the trackpad taps.
+
+<img src="docs/settings.jpg" width="520" alt="Settings, Appearance: style, taps, theme and the refraction list">
 
 ## Install
 
