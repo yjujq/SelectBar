@@ -40,3 +40,11 @@ macOS 26. Tested on a MacBook Pro M3 Pro.
 ```
 
 Swift, AppKit and SwiftUI, no dependencies. For an Xcode project, run `xcodegen generate`.
+
+## Privacy
+
+SelectBar collects nothing and sends nothing anywhere. The selected text leaves your Mac only when you pick an action that opens a website — search, translate, maps — and then it goes to that site in your browser.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
