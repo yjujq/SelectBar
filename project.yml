@@ -9,8 +9,8 @@ targets:
   SelectBar:
     type: application
     platform: macOS
-    # Только Sources: в Tools лежит отдельная программа рисования иконки,
-    # у неё свой main.swift, и в одной цели они бы столкнулись.
+    # Only Sources: Tools holds a separate icon-drawing program with its
+    # own main.swift, and in a single target the two would clash.
     sources:
       - path: Sources
       - path: AppIcon.icns
@@ -25,6 +25,6 @@ targets:
         SWIFT_VERSION: "6.0"
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: YES
-        # Приложение читает выделение через Accessibility — с песочницей это
-        # несовместимо, поэтому она выключена намеренно.
+        # The app reads the selection through Accessibility, which does not
+        # work inside the sandbox, so the sandbox is deliberately turned off.
         ENABLE_APP_SANDBOX: NO

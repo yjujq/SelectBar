@@ -1,17 +1,17 @@
-# Собранное приложение — пересобирается из исходников
+# The built app — rebuilt from source
 SelectBar.app/
 
-# Проект Xcode генерируется из project.yml командой xcodegen generate
+# The Xcode project is generated from project.yml with xcodegen generate
 SelectBar.xcodeproj/
 
-# Иконка собирается из AppIcon.iconset скриптом сборки
+# The icon is built from AppIcon.iconset by the build script
 AppIcon.icns
 
-# Скомпилированный рисовальщик иконки
+# The compiled icon renderer
 Tools/makeicon
 
 .DS_Store
 DerivedData/
 
-# Случайный клон этого же репозитория, лежащий внутри него
+# A stray clone of this same repository sitting inside it
 SelectBar/
