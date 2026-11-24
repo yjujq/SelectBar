@@ -23,7 +23,7 @@ mkdir -p "$STAGE/$APP/Contents/MacOS" "$STAGE/$APP/Contents/Resources"
 swiftc -O -o "$BIN" \
     $(ls Sources/*.swift | grep -v 'main\.swift$') Sources/main.swift \
     -framework AppKit -framework ApplicationServices \
-    -framework Metal -framework ScreenCaptureKit
+    -framework Metal -framework ScreenCaptureKit -framework Security -framework NaturalLanguage -framework Translation -framework Vision -framework Carbon -framework Speech -framework AVFoundation
 cp Info.plist "$STAGE/$APP/Contents/Info.plist"
 
 if [ -d AppIcon.iconset ]; then

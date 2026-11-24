@@ -11,6 +11,10 @@
     <key>CFBundleShortVersionString</key> <string>0.2</string>
     <key>CFBundleVersion</key>         <string>1</string>
     <key>LSMinimumSystemVersion</key>  <string>13.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>SelectBar turns what the microphone hears into text when you choose Microphone in Transcribe Audio.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>SelectBar turns speech into text on this Mac.</string>
     <key>LSUIElement</key>             <true/>
     <key>NSHighResolutionCapable</key> <true/>
 </dict>

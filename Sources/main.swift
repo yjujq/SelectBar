@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 
 @MainActor
@@ -16,6 +17,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var focusWatchers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DeepLApp.watch()
+        ScreenText.registerShortcut()
+        ScreenText.onText = { [weak self] text, point in
+            guard let self else { return }
+            self.popup.show(actions: self.store.actions(forSelectedText: text, editable: false, captured: true),
+                            text: text, rect: nil, near: point)
+        }
+        if FileManager.default.fileExists(atPath: "/tmp/selectbar-shot") {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(900))
+                let acts = (0..<5).map { i in
+                    Action(title: "A\(i)", symbol: "doc.on.doc", run: { _ in })
+                }
+                let screen = NSScreen.main!
+                let spot = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
+                let bar = PopupController()
+                bar.show(actions: acts, text: "проба", rect: nil, near: spot)
+                try? await Task.sleep(for: .milliseconds(2000))
+
+                // Ровно то, что делает обычный скриншот: не исключаем ничего.
+                let content = try? await SCShareableContent.excludingDesktopWindows(
+                    false, onScreenWindowsOnly: true)
+                if let display = content?.displays.first {
+                    let filter = SCContentFilter(display: display,
+                                                 excludingApplications: [], exceptingWindows: [])
+                    let config = SCStreamConfiguration()
+                    config.sourceRect = CGRect(x: spot.x - 260, y: screen.frame.maxY - spot.y - 90,
+                                               width: 520, height: 160)
+                    config.width = 520; config.height = 160
+                    config.showsCursor = false
+                    config.scalesToFit = false
+                    if let img = try? await SCScreenshotManager.captureImage(
+                        contentFilter: filter, configuration: config) {
+                        let rep = NSBitmapImageRep(cgImage: img)
+                        try? rep.representation(using: .png, properties: [:])?
+                            .write(to: URL(fileURLWithPath: "/tmp/selectbar-shot.png"))
+                    }
+                }
+                bar.hide()
+            }
+        }
+
+
 
 
 
@@ -110,6 +154,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func menuEntries() -> [MenuEntry] {
         var entries: [MenuEntry] = [
+            MenuEntry(title: "Capture Text", symbol: "text.viewfinder", shortcut: ScreenText.shortcut) {
+                [weak self] in
+                self?.menuPanel.hide()
+                // Once the menu is gone, or it would be in the picture.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenText.capture() }
+            },
+            MenuEntry(title: "Capture and Translate", symbol: "translate", shortcut: ScreenText.translateShortcut) {
+                [weak self] in
+                self?.menuPanel.hide()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenText.capture(then: .translate) }
+            },
+            MenuEntry(title: "Transcribe Audio", symbol: "waveform", shortcut: ListeningPanel.shortcut) {
+                [weak self] in
+                self?.menuPanel.hide()
+                ListeningPanel.toggle()
+            },
             MenuEntry(title: "Restart", symbol: "arrow.clockwise", shortcut: "⌘R") {
                 [weak self] in self?.restartApp()
             }
@@ -266,9 +326,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the click count: shift-clicking extends a selection that already
         // exists, and arrives as a single click like any other.
         if clickCount == 1, !dragged, !modifiers.contains(.shift) { return }
+        // The drag of an area being captured selects nothing; the bar comes
+        // with the text read from it instead.
+        if ScreenText.isCapturing { return }
         let work = DispatchWorkItem {
             MainActor.assumeIsolated { [weak self] in
-            guard let self else { return }
+            guard let self, !ScreenText.isCapturing else { return }
             // A single click in a field just places the caret, and the paste
             // bar has no business appearing for it. A double click is needed.
             self.reader.offerPaste = self.store.offerPaste && clickCount >= 2

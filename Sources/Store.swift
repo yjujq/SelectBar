@@ -64,27 +64,6 @@ enum ActionContext: String, Codable, CaseIterable, Identifiable {
 }
 
 /// What fills the bar's background.
-extension ActionStore {
-    /// How the app's own windows are offered to screen captures.
-    ///
-    /// `.none` means the window server never hands those pixels to anybody —
-    /// not a screenshot, not a recording, not a call being shared. That is
-    /// needed exactly when the lens is filming, and for one reason: the lens
-    /// films what is behind the bar continuously, so a bar that could be
-    /// captured would film itself, frame after frame, refracting its own
-    /// picture without end. The filter that leaves this application out is
-    /// built from the list of applications with windows on screen, and the
-    /// first time round the bar may not be in that list yet — so the
-    /// exclusion came out empty and the loop closed. This does not depend on
-    /// the list at all.
-    ///
-    /// No other style films anything, and there the bar has no business being
-    /// invisible: a bar nobody can screenshot cannot be shown to anyone.
-    var windowSharing: NSWindow.SharingType {
-        barStyle == .lens ? .none : .readOnly
-    }
-}
-
 enum BarStyle: String, Codable, CaseIterable, Identifiable {
     case solid, glass, glassClear, blur, lens
     var id: String { rawValue }
@@ -515,6 +494,12 @@ final class ActionStore: ObservableObject {
         .init(title: "Email",     symbol: "envelope",           kind: .builtin("email"),  context: .emails),
         .init(title: "Search",    symbol: "magnifyingglass",    kind: .builtin("search"),    context: .plainText),
         .init(title: "Translate", symbol: "translate",          kind: .builtin("translate"), context: .plainText),
+        // DeepL's own window rather than SelectBar's popover: what the app
+        // shows on a double ⌘C, wherever it chooses to show it.
+        .init(title: "Translate in DeepL", symbol: ActionIcon.deepL,
+              kind: .builtin("translateDeepL"), context: .plainText),
+        .init(title: "Translate (macOS)", symbol: "bubble.left.and.text.bubble.right",
+              kind: .builtin("translateMac"), context: .plainText),
         .init(title: "Speak",     symbol: "speaker.wave.2",     kind: .builtin("speak"),     context: .plainText,
               maxTextLength: 800),
         .init(title: "Paste",     symbol: "doc.on.clipboard",   kind: .builtin("paste"), context: .emptyField),
@@ -778,6 +763,15 @@ final class ActionStore: ObservableObject {
             defaults.set(true, forKey: symbolRefreshKey)
         }
 
+        // Translate in DeepL started out with a generic pair of bubbles;
+        // it now wears DeepL's own mark, unless its symbol was changed by hand.
+        if let index = stored.firstIndex(where: {
+            if case .builtin("translateDeepL") = $0.kind { return $0.symbol == "bubble.left.and.text.bubble.right" }
+            return false
+        }) {
+            stored[index].symbol = ActionIcon.deepL
+        }
+
         // Once: everything switched on to the top, so the handful in use are
         // not scattered through fifty that are not. A stable partition — the
         // bar reads this same list in order and takes only what is on, so it
@@ -821,7 +815,9 @@ final class ActionStore: ObservableObject {
 
     // MARK: - Turning settings into bar actions
 
-    func actions(forSelectedText text: String, editable: Bool) -> [Action] {
+    /// `captured`: the text was read off the screen and is selected nowhere,
+    /// so what works by pressing keys in the app in front is left out.
+    func actions(forSelectedText text: String, editable: Bool, captured: Bool = false) -> [Action] {
         // Read the pasteboard only if something is going to ask about it. The
         // paste item is the only one that does, it is shown only where typing
         // is allowed, and it is off by default — so most selections used to
@@ -833,6 +829,9 @@ final class ActionStore: ObservableObject {
         return definitions
             .filter { def in
                 guard def.enabled, Self.canBeOpened(def) else { return false }
+                if captured, case .builtin(let id) = def.kind, id == "selectAll" {
+                    return false
+                }
                 // Paste fits anywhere typing is allowed: in an empty field it
                 // simply pastes, over a selection it replaces it.
                 if def.context == .emptyField { return editable && clip != nil }

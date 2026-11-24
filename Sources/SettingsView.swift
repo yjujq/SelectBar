@@ -23,6 +23,7 @@ struct SettingsView: View {
     /// a slider.
     @State private var screenRecordingGranted = true
     @State private var query = ""
+    @State private var deepLKey = Translator.apiKey
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -278,6 +279,16 @@ struct SettingsView: View {
                            subtitle: "Hidden, the only way back is to launch the app again.",
                            toggle: $store.showStatusIcon)
 
+                SectionHeader(title: "Translation")
+                SettingRow(title: "DeepL API key",
+                           subtitle: deepLKey.isEmpty
+                               ? "Optional. Without a key, the translation comes from the DeepL app."
+                               : "Translate shows the result in SelectBar's own panel.") {
+                    SecureField("Key", text: $deepLKey)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 150)
+                        .onChange(of: deepLKey) { _, key in Translator.apiKey = key }
+                }
             }
             .padding(.bottom, 12)
         }
@@ -428,9 +439,21 @@ private struct BarPreview: NSViewRepresentable {
 
 /// A symbol that is missing from this system's catalogue would leave a blank
 /// row, so it is swapped for a visible placeholder.
+/// An action's icon in SwiftUI: a symbol, or the app mark ActionIcon draws.
+struct ActionSymbol: View {
+    let name: String
+
+    var body: some View {
+        if name == ActionIcon.deepL, let image = ActionIcon.image(name, pointSize: 12) {
+            Image(nsImage: image).renderingMode(.template)
+        } else {
+            Image(systemName: name)
+        }
+    }
+}
+
 func symbolOrFallback(_ name: String) -> String {
-    NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
-        ? name : "questionmark.square.dashed"
+    ActionIcon.exists(name) ? name : "questionmark.square.dashed"
 }
 
 // MARK: - The list of actions
@@ -529,7 +552,7 @@ private struct ActionRow: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
                 .tint(Color.white.opacity(0.34))
-            Image(systemName: symbolOrFallback(def.symbol))
+            ActionSymbol(name: symbolOrFallback(def.symbol))
                 .font(.system(size: 12))
                 .foregroundStyle(def.enabled ? Chrome.text : Chrome.faint)
                 .frame(width: 18)
@@ -711,10 +734,6 @@ final class SettingsWindowController {
                 return nil
             }
         }
-        // As with the panels, and settled on every showing rather than once:
-        // the preview inside is a lens when the bar is, and must not be shown
-        // the window it is standing in. The window outlives a change of style.
-        window?.sharingType = ActionStore.shared.windowSharing
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

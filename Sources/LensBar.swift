@@ -220,6 +220,9 @@ final class LensView: NSView {
 /// itself and every frame would fold the last one into the picture.
 final class LensStream: NSObject, SCStreamOutput, SCStreamDelegate {
 
+    /// Temporary.
+    nonisolated(unsafe) static var note: ((String) -> Void)?
+
     /// Handed each frame on the main thread, for as long as the stream runs.
     var onFrame: ((CVPixelBuffer) -> Void)?
 
@@ -241,9 +244,36 @@ final class LensStream: NSObject, SCStreamOutput, SCStreamDelegate {
                     $0.displayID == number?.uint32Value
                 }) ?? content.displays.first else { return }
 
-                let ours = content.applications.filter {
+                // Asked for until the answer includes us.
+                //
+                // The window server's list of applications with windows on
+                // screen does not have this one in it the moment the bar goes
+                // up — traced over three showings, it was missing on two. An
+                // exclusion built from that list comes out empty, and a lens
+                // that excludes nothing films itself, folding every frame into
+                // the next without end. That is what the bar being hidden from
+                // every capture was guarding against.
+                //
+                // So the list is asked for again until we are in it, and if we
+                // never are, no stream is started at all: the bar keeps the
+                // plain fill under it, which is what it does without the
+                // permission anyway.
+                var ours = content.applications.filter {
                     $0.bundleIdentifier == Bundle.main.bundleIdentifier
                 }
+                var attempt = 1
+                while ours.isEmpty, attempt < 8 {
+                    try? await Task.sleep(for: .milliseconds(40))
+                    attempt += 1
+                    let again = try await SCShareableContent.excludingDesktopWindows(
+                        false, onScreenWindowsOnly: true)
+                    ours = again.applications.filter {
+                        $0.bundleIdentifier == Bundle.main.bundleIdentifier
+                    }
+                }
+                LensStream.note?("исключение нашлось с попытки \(attempt)" +
+                                 (ours.isEmpty ? " — НЕТ, поток не запускаем" : ""))
+                guard !ours.isEmpty else { return }
                 let filter = SCContentFilter(display: display,
                                              excludingApplications: ours,
                                              exceptingWindows: [])

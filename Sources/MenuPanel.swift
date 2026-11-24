@@ -51,9 +51,8 @@ final class FloatingPanel {
         panel.level = .popUpMenu
         panel.hidesOnDeactivate = false
         panel.acceptsMouseMovedEvents = true
-        // For the same reason as the bar's own panel, and only when it
-        // applies: this stands over a bar that may be filming.
-        panel.sharingType = ActionStore.shared.windowSharing
+        // Nothing special: the lens keeps itself out of its own film by
+        // excluding this application, so nothing here needs hiding.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.contentView = hosting
 

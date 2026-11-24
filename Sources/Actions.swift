@@ -85,29 +85,11 @@ struct Action {
 
     // MARK: - Translation
 
-    /// Hand the selection to the installed DeepL app.
-    ///
-    /// The app has neither a URL scheme nor AppleScript support. The macOS
-    /// "Translate with DeepL" service exists but is off by default and declares
-    /// no return types — it accepts text but cannot hand a result back. So we
-    /// use its own supported path: a double ⌘C, on which DeepL shows its own
-    /// translation window.
-    @discardableResult
-    static func translateWithDeepLApp(_ text: String) -> Bool {
-        guard FileManager.default.fileExists(atPath: "/Applications/DeepL.app") else { return false }
-        pressCommand(key: 8)                       // 8 = C
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { pressCommand(key: 8) }
-        return true
-    }
-
     /// The fallback is the web translator. We pick the direction ourselves:
     /// Cyrillic goes to English, everything else to Russian, otherwise the
     /// translation would be into the language it is already in.
     static func deepLURL(for text: String) -> String {
-        let scalars = text.unicodeScalars
-        let letters = scalars.filter { CharacterSet.letters.contains($0) }.count
-        let cyrillic = scalars.filter { $0.value >= 0x0400 && $0.value <= 0x04FF }.count
-        let target = (letters > 0 && Double(cyrillic) / Double(letters) > 0.4) ? "en" : "ru"
+        let target = Translator.targetLanguage(for: text)
         let encoded = text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? text
         return "https://www.deepl.com/translator#auto/\(target)/\(encoded)"
     }
@@ -295,7 +277,30 @@ struct Action {
             return { text in open("https://www.google.com/search?q=" + urlEncoded(text)) }
         case "translate":
             return { text in
-                if !translateWithDeepLApp(text) { open(deepLURL(for: text)) }
+                // The translation comes back to our own panel, from the API
+                // when there is a key and from the DeepL app when there is
+                // not. With neither, the website.
+                if Translator.hasKey || DeepLApp.installed {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { Translator.show(text) }
+                } else {
+                    open(deepLURL(for: text))
+                }
+            }
+        case "translateMac":
+            return { text in
+                // After the bar has gone, so the popover is not dismissed by
+                // the same click.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { SystemTranslation.show(text) }
+            }
+        case "translateDeepL":
+            return { text in
+                // DeepL's own little window, with this text whether it is
+                // selected in the app in front or was read off the screen.
+                if DeepLApp.installed {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { DeepLApp.quickTranslate(text) }
+                } else {
+                    open(deepLURL(for: text))
+                }
             }
         case "speak":
             return { text in

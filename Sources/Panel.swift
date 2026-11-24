@@ -38,6 +38,13 @@ final class PopupController {
         currentText = text
         currentActions = actions
 
+        // A translation may follow: DeepL is started, or its page found, now,
+        // so the popover does not wait for it — nor fail on a DeepL that is
+        // still loading.
+        if ActionStore.shared.definitions.contains(where: { $0.enabled && $0.kind == .builtin("translate") }) {
+            Task { await Translator.prewarm(start: true) }
+        }
+
         let content = buildBar(actions: actions)
         let size = content.fittingSize
 
@@ -71,9 +78,13 @@ final class PopupController {
         // rims the capsule visibly — the backing view draws nothing itself,
         // borderWidth is 0 throughout its layer tree.
         panel.hasShadow = ActionStore.shared.barStyle == .solid
-        // Kept out of every screen capture while the lens is filming, and
-        // offered to them in every other style. See `windowSharing`.
-        panel.sharingType = ActionStore.shared.windowSharing
+        // An ordinary window as far as captures go, so the bar appears in
+        // screenshots and recordings like anything else on screen. It was
+        // hidden from all of them for a while: the lens films what is behind
+        // the bar, and a bar the lens can see films itself. What keeps that
+        // shut is the lens excluding this application from its own stream —
+        // properly now, waiting until the window server's list has us in it
+        // rather than building an empty exclusion and hoping.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.appearance = appearance(for: ActionStore.shared)
         panel.contentView = content
@@ -648,16 +659,15 @@ private final class HoverButton: NSButton {
         // Some symbols only exist in recent SF Symbols releases — if the name
         // is unknown, fall back so the button is not left blank.
         let scale = ActionStore.shared.barScale
-        let config = NSImage.SymbolConfiguration(pointSize: 14 * scale, weight: .regular)
-        let image = NSImage(systemSymbolName: action.symbol, accessibilityDescription: action.title)
-            ?? NSImage(systemSymbolName: "character.book.closed", accessibilityDescription: action.title)
+        let image = ActionIcon.image(action.symbol, pointSize: 14 * scale, description: action.title)
+            ?? ActionIcon.image("character.book.closed", pointSize: 14 * scale, description: action.title)
         // A missing symbol leaves nothing to show, so the title stands in
         // regardless of what the item asked for.
         let showsIcon = action.label.showsIcon && image != nil
         let showsText = action.label.showsText || !showsIcon
 
         if showsIcon, let image {
-            button.image = image.withSymbolConfiguration(config)
+            button.image = image
         }
         if showsText {
             // Set as an attributed string rather than a plain title: the font
